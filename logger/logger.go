@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	RequestIDKey = "X-Request-Id"
+	TraceID = "X-Trace-ID"
 )
 
 type Logger interface {
@@ -61,7 +61,7 @@ func NewWithZap(l *zap.Logger) Logger {
 
 func (l *logger) With(ctx context.Context, args ...interface{}) Logger {
 	if ctx != nil {
-		if id, ok := ctx.Value(RequestIDKey).(string); ok {
+		if id, ok := ctx.Value(TraceID).(string); ok {
 			args = append(args, zap.String("traceId", id))
 		}
 	}
