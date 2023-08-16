@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 
+	"github.com/petermattis/goid"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -61,6 +62,8 @@ func NewWithZap(l *zap.Logger) Logger {
 }
 
 func (l *logger) With(ctx context.Context, args ...interface{}) Logger {
+	gid := goid.Get()
+	args = append(args, zap.Int64("goid", gid))
 	if ctx != nil {
 		if id, ok := ctx.Value(TraceID).(string); ok {
 			args = append(args, zap.String("traceId", id))
