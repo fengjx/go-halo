@@ -2,6 +2,7 @@ package logger
 
 import (
 	"context"
+	"log"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -27,7 +28,7 @@ type Logger interface {
 	Errorf(format string, args ...interface{})
 	Panicf(format string, args ...interface{})
 
-	Sync()
+	Flush()
 }
 
 type logger struct {
@@ -71,8 +72,11 @@ func (l *logger) With(ctx context.Context, args ...interface{}) Logger {
 	return l
 }
 
-func (l *logger) Sync() {
-	l.Sync()
+func (l *logger) Flush() {
+	err := l.Sync()
+	if err != nil {
+		log.Printf("log flush err - %v \n", err)
+	}
 }
 
 func GetLogLevel(logLevel string) zapcore.Level {
