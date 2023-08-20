@@ -43,8 +43,11 @@ func New(logLevel string, logFile string, maxSizeMB int, maxDays int) Logger {
 		MaxBackups: 3,
 		MaxAge:     maxDays,
 	})
+	encoderConfig := zap.NewProductionEncoderConfig()
+	encoderConfig.TimeKey = "time"
+	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
 	core := zapcore.NewCore(
-		zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()),
+		zapcore.NewJSONEncoder(encoderConfig),
 		w,
 		zapcore.Level(GetLogLevel(logLevel)),
 	)
