@@ -3,6 +3,8 @@ package logger
 import (
 	"context"
 	"log"
+	"strings"
+	"sync"
 
 	"github.com/petermattis/goid"
 	"go.uber.org/zap"
@@ -11,7 +13,7 @@ import (
 )
 
 const (
-	TraceID = "X-Trace-ID"
+	TraceIDKey = "X-Trace-ID"
 )
 
 type Logger interface {
@@ -30,13 +32,36 @@ type Logger interface {
 	Panicf(format string, args ...interface{})
 
 	Flush()
+
+	SetLocalTraceID(traceID string)
+	SetLocalContext(ctx context.Context)
+	GetLocalContext() context.Context
+	RemoveLocalContext()
 }
 
 type logger struct {
-	adapter *zap.SugaredLogger
+	adapter   *zap.SugaredLogger
+	traceMap  sync.Map
+	openTrace bool
 }
 
-func New(logLevel string, logFile string, maxSizeMB int, maxDays int) Logger {
+type Options struct {
+	openTrace bool
+}
+
+type Option func(*Options)
+
+func WithTrace() Option {
+	return func(ops *Options) {
+		ops.openTrace = true
+	}
+}
+
+func New(logLevel string, logFile string, maxSizeMB int, maxDays int, opts ...Option) Logger {
+	ops := &Options{}
+	for _, opt := range opts {
+		opt(ops)
+	}
 	w := zapcore.AddSync(&lumberjack.Logger{
 		Filename:   logFile,
 		MaxSize:    maxSizeMB,
@@ -52,28 +77,34 @@ func New(logLevel string, logFile string, maxSizeMB int, maxDays int) Logger {
 		zapcore.Level(GetLogLevel(logLevel)),
 	)
 	l := zap.New(core)
-	return NewWithZap(l)
+	return NewWithZap(l, ops.openTrace)
 }
 
 func NewConsole() Logger {
 	l, _ := zap.NewDevelopment()
-	return NewWithZap(l)
+	return NewWithZap(l, true)
 }
 
-func NewWithZap(l *zap.Logger) Logger {
-	return &logger{l.Sugar()}
+func NewWithZap(l *zap.Logger, openTrace bool) Logger {
+	return &logger{
+		adapter:   l.Sugar(),
+		openTrace: openTrace,
+	}
 }
 
 func (l *logger) With(ctx context.Context, args ...interface{}) Logger {
 	gid := goid.Get()
 	args = append(args, zap.Int64("goid", gid))
+	if l.openTrace && ctx == nil {
+		ctx = l.GetLocalContext()
+	}
 	if ctx != nil {
-		if id, ok := ctx.Value(TraceID).(string); ok {
+		if id, ok := ctx.Value(TraceIDKey).(string); ok {
 			args = append(args, zap.String("traceId", id))
 		}
 	}
 	if len(args) > 0 {
-		return &logger{l.adapter.With(args...)}
+		return &logger{adapter: l.adapter.With(args...)}
 	}
 	return l
 }
@@ -155,6 +186,32 @@ func (l *logger) Flush() {
 	}
 }
 
+func (l *logger) SetLocalTraceID(traceID string) {
+	ctx := l.GetLocalContext()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	l.SetLocalContext(context.WithValue(ctx, TraceIDKey, traceID))
+}
+
+func (l *logger) SetLocalContext(ctx context.Context) {
+	gid := goid.Get()
+	l.traceMap.Store(gid, ctx)
+}
+
+func (l *logger) GetLocalContext() context.Context {
+	gid := goid.Get()
+	if value, ok := l.traceMap.Load(gid); ok {
+		return value.(context.Context)
+	}
+	return nil
+}
+
+func (l *logger) RemoveLocalContext() {
+	gid := goid.Get()
+	l.traceMap.Delete(gid)
+}
+
 func (l *logger) checkLevel(lv Level) bool {
 	return Level(l.adapter.Level()) <= lv
 }
@@ -182,7 +239,7 @@ var (
 
 func GetLogLevel(logLevel string) Level {
 	var level zapcore.Level
-	switch logLevel {
+	switch strings.ToLower(logLevel) {
 	case "panic":
 		level = zapcore.PanicLevel
 	case "dpanic":
