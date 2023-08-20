@@ -33,7 +33,7 @@ type Logger interface {
 }
 
 type logger struct {
-	*zap.SugaredLogger
+	adapter *zap.SugaredLogger
 }
 
 func New(logLevel string, logFile string, maxSizeMB int, maxDays int) Logger {
@@ -70,7 +70,7 @@ func (l *logger) With(ctx context.Context, args ...interface{}) Logger {
 		}
 	}
 	if len(args) > 0 {
-		return &logger{l.SugaredLogger.With(args...)}
+		return &logger{l.adapter.With(args...)}
 	}
 	return l
 }
@@ -79,81 +79,81 @@ func (l *logger) Debug(args ...interface{}) {
 	if !l.checkLevel(DebugLevel) {
 		return
 	}
-	l.With(nil).Debug(args...)
+	l.With(nil).(*logger).adapter.Debug(args...)
 }
 
 func (l *logger) Debugf(format string, args ...interface{}) {
 	if !l.checkLevel(DebugLevel) {
 		return
 	}
-	l.With(nil).Debugf(format, args...)
+	l.With(nil).(*logger).adapter.Debugf(format, args...)
 }
 
 func (l *logger) Info(args ...interface{}) {
 	if !l.checkLevel(InfoLevel) {
 		return
 	}
-	l.With(nil).Info(args...)
+	l.With(nil).(*logger).adapter.Info(args...)
 }
 
 func (l *logger) Infof(format string, args ...interface{}) {
 	if !l.checkLevel(InfoLevel) {
 		return
 	}
-	l.With(nil).Infof(format, args...)
+	l.With(nil).(*logger).adapter.Infof(format, args...)
 }
 
 func (l *logger) Warn(args ...interface{}) {
 	if !l.checkLevel(WarnLevel) {
 		return
 	}
-	l.With(nil).Warn(args...)
+	l.With(nil).(*logger).adapter.Warn(args...)
 }
 
 func (l *logger) Warnf(format string, args ...interface{}) {
 	if !l.checkLevel(WarnLevel) {
 		return
 	}
-	l.With(nil).Warnf(format, args...)
+	l.With(nil).(*logger).adapter.Warnf(format, args...)
 }
 
 func (l *logger) Error(args ...interface{}) {
 	if !l.checkLevel(ErrorLevel) {
 		return
 	}
-	l.With(nil).Error(args...)
+	l.With(nil).(*logger).adapter.Error(args...)
 }
 
 func (l *logger) Errorf(format string, args ...interface{}) {
 	if !l.checkLevel(ErrorLevel) {
 		return
 	}
-	l.With(nil).Errorf(format, args...)
+	l.With(nil).(*logger).adapter.Errorf(format, args...)
 }
 
 func (l *logger) Panic(args ...interface{}) {
 	if !l.checkLevel(PanicLevel) {
 		return
 	}
-	l.With(nil).Panic(args...)
+	l.With(nil).(*logger).adapter.Panic(args...)
 }
 
 func (l *logger) Panicf(format string, args ...interface{}) {
 	if !l.checkLevel(PanicLevel) {
 		return
 	}
-	l.With(nil).Panicf(format, args...)
+	l.With(nil).(*logger).adapter.Panicf(format, args...)
 }
 
 func (l *logger) Flush() {
-	err := l.Sync()
+	err := l.adapter.Sync()
 	if err != nil {
 		log.Printf("log flush err - %v \n", err)
 	}
 }
 
 func (l *logger) checkLevel(lv Level) bool {
-	return Level(l.Level()) >= lv
+	return Level(l.adapter.Level()) <= lv
 }
 
 type Level zapcore.Level

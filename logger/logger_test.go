@@ -1,13 +1,12 @@
-package main
+package logger
 
 import (
 	"sync"
-
-	"github.com/fengjx/go-halo/logger"
+	"testing"
 )
 
-func main() {
-	log := logger.NewConsole()
+func TestConsole(t *testing.T) {
+	log := NewConsole()
 	wg := &sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
