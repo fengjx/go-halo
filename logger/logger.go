@@ -46,7 +46,7 @@ func New(logLevel string, logFile string, maxSizeMB int, maxDays int) Logger {
 	core := zapcore.NewCore(
 		zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()),
 		w,
-		GetLogLevel(logLevel),
+		zapcore.Level(GetLogLevel(logLevel)),
 	)
 	l := zap.New(core)
 	return NewWithZap(l)
@@ -75,6 +75,76 @@ func (l *logger) With(ctx context.Context, args ...interface{}) Logger {
 	return l
 }
 
+func (l *logger) Debug(args ...interface{}) {
+	if !l.checkLevel(DebugLevel) {
+		return
+	}
+	l.With(nil).Debug(args...)
+}
+
+func (l *logger) Debugf(format string, args ...interface{}) {
+	if !l.checkLevel(DebugLevel) {
+		return
+	}
+	l.With(nil).Debugf(format, args...)
+}
+
+func (l *logger) Info(args ...interface{}) {
+	if !l.checkLevel(InfoLevel) {
+		return
+	}
+	l.With(nil).Info(args...)
+}
+
+func (l *logger) Infof(format string, args ...interface{}) {
+	if !l.checkLevel(InfoLevel) {
+		return
+	}
+	l.With(nil).Infof(format, args...)
+}
+
+func (l *logger) Warn(args ...interface{}) {
+	if !l.checkLevel(WarnLevel) {
+		return
+	}
+	l.With(nil).Warn(args...)
+}
+
+func (l *logger) Warnf(format string, args ...interface{}) {
+	if !l.checkLevel(WarnLevel) {
+		return
+	}
+	l.With(nil).Warnf(format, args...)
+}
+
+func (l *logger) Error(args ...interface{}) {
+	if !l.checkLevel(ErrorLevel) {
+		return
+	}
+	l.With(nil).Error(args...)
+}
+
+func (l *logger) Errorf(format string, args ...interface{}) {
+	if !l.checkLevel(ErrorLevel) {
+		return
+	}
+	l.With(nil).Errorf(format, args...)
+}
+
+func (l *logger) Panic(args ...interface{}) {
+	if !l.checkLevel(PanicLevel) {
+		return
+	}
+	l.With(nil).Panic(args...)
+}
+
+func (l *logger) Panicf(format string, args ...interface{}) {
+	if !l.checkLevel(PanicLevel) {
+		return
+	}
+	l.With(nil).Panicf(format, args...)
+}
+
 func (l *logger) Flush() {
 	err := l.Sync()
 	if err != nil {
@@ -82,7 +152,32 @@ func (l *logger) Flush() {
 	}
 }
 
-func GetLogLevel(logLevel string) zapcore.Level {
+func (l *logger) checkLevel(lv Level) bool {
+	return Level(l.Level()) >= lv
+}
+
+type Level zapcore.Level
+
+var (
+	DebugLevel = Level(zapcore.DebugLevel)
+	// InfoLevel is the default logging priority.
+	InfoLevel = Level(zapcore.InfoLevel)
+	// WarnLevel logs are more important than Info, but don't need individual
+	// human review.
+	WarnLevel = Level(zapcore.WarnLevel)
+	// ErrorLevel logs are high-priority. If an application is running smoothly,
+	// it shouldn't generate any error-level logs.
+	ErrorLevel = Level(zapcore.ErrorLevel)
+	// DPanicLevel logs are particularly important errors. In development the
+	// logger panics after writing the message.
+	DPanicLevel = Level(zapcore.DPanicLevel)
+	// PanicLevel logs a message, then panics.
+	PanicLevel = Level(zapcore.PanicLevel)
+	// FatalLevel logs a message, then calls os.Exit(1).
+	FatalLevel = Level(zapcore.FatalLevel)
+)
+
+func GetLogLevel(logLevel string) Level {
 	var level zapcore.Level
 	switch logLevel {
 	case "panic":
@@ -100,5 +195,5 @@ func GetLogLevel(logLevel string) zapcore.Level {
 	default:
 		level = zapcore.InfoLevel
 	}
-	return level
+	return Level(level)
 }
