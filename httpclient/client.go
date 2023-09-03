@@ -126,13 +126,19 @@ func (cli *Client) Get(requestURL string, params map[string]string) (*Response, 
 	return cli.Request(req)
 }
 
-func (cli *Client) Post(requestURL string, data interface{}) (*Response, error) {
-	bys, err := json.ToBytes(data)
-	if err != nil {
-		return nil, err
+func (cli *Client) Post(requestURL string, data interface{}) (resp *Response, err error) {
+	var req *http.Request
+	if data == nil {
+		req, err = http.NewRequest(MethodPost, requestURL, nil)
+	} else {
+		var bys []byte
+		bys, err = json.ToBytes(data)
+		if err != nil {
+			return nil, err
+		}
+		bodyBuf := bytes.NewBuffer(bys)
+		req, err = http.NewRequest(MethodPost, requestURL, bodyBuf)
 	}
-	bodyBuf := bytes.NewBuffer(bys)
-	req, err := http.NewRequest(MethodPost, requestURL, bodyBuf)
 	if err != nil {
 		return nil, err
 	}
@@ -140,13 +146,18 @@ func (cli *Client) Post(requestURL string, data interface{}) (*Response, error) 
 	return cli.Request(req)
 }
 
-func (cli *Client) PostForm(requestURL string, formData map[string]string) (*Response, error) {
-	formDataValues := url.Values{}
-	for k, v := range formData {
-		formDataValues.Add(k, v)
+func (cli *Client) PostForm(requestURL string, formData map[string]string) (resp *Response, err error) {
+	var req *http.Request
+	if len(formData) == 0 {
+		req, err = http.NewRequest(MethodPost, requestURL, nil)
+	} else {
+		formDataValues := url.Values{}
+		for k, v := range formData {
+			formDataValues.Add(k, v)
+		}
+		bodyBuf := bytes.NewBuffer([]byte(formDataValues.Encode()))
+		req, err = http.NewRequest(MethodPost, requestURL, bodyBuf)
 	}
-	bodyBuf := bytes.NewBuffer([]byte(formDataValues.Encode()))
-	req, err := http.NewRequest(MethodPost, requestURL, bodyBuf)
 	if err != nil {
 		return nil, err
 	}
