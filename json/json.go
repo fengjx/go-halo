@@ -4,16 +4,28 @@ import (
 	jsoniter "github.com/json-iterator/go"
 )
 
-func ToJson(data interface{}) string {
+func ToJson(data interface{}) (string, error) {
 	b, err := jsoniter.Marshal(data)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return string(b)
+	return string(b), nil
+}
+
+func ToBytes(data interface{}) ([]byte, error) {
+	return jsoniter.Marshal(data)
 }
 
 func FromJson(jsonStr string, target interface{}) error {
 	err := jsoniter.Unmarshal([]byte(jsonStr), &target)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func FromBytes(bytes []byte, target interface{}) error {
+	err := jsoniter.Unmarshal(bytes, &target)
 	if err != nil {
 		return err
 	}

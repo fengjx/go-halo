@@ -1,9 +1,10 @@
 package event
 
 import (
-	"github.com/fengjx/go-halo/worker"
 	"sync"
 	"time"
+
+	"github.com/fengjx/go-halo/worker"
 )
 
 type eventHandle func(msg interface{})
