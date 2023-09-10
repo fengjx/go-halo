@@ -32,6 +32,10 @@ func FromBytes(bytes []byte, target interface{}) error {
 	return nil
 }
 
-func GetPathVal(jsonStr string, path interface{}) jsoniter.Any {
+func GetNodeFromString(jsonStr string, path interface{}) jsoniter.Any {
 	return jsoniter.Get([]byte(jsonStr), path)
+}
+
+func GetNodeFromBytes(byt []byte, path interface{}) jsoniter.Any {
+	return jsoniter.Get([]byte(byt), path)
 }
