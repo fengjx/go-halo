@@ -1,8 +1,9 @@
-package utils
+package halo
 
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"os"
 	"runtime"
 )
@@ -13,6 +14,20 @@ var (
 	dot       = []byte(".")
 	slash     = []byte("/")
 )
+
+func Recover() {
+	RecoverFunc(func(_ string) {})
+}
+
+func RecoverFunc(fn func(string)) {
+	err := recover()
+	if err == nil {
+		return
+	}
+	stack := Stack(2)
+	log.Printf("panic: %s (%s)\n", err, stack)
+	fn(string(stack))
+}
 
 // Stack returns a nicely formatted stack frame, skipping skip frames.
 func Stack(skip int) []byte {
