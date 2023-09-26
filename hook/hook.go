@@ -30,6 +30,10 @@ type hookFun struct {
 var hookMap map[string][]hookFun
 var hookMapLock sync.Mutex
 
+func init() {
+	hookMap = make(map[string][]hookFun)
+}
+
 func AddCustomStartHook(name string, handler func(), order int, opts ...Option) {
 	hookMapLock.Lock()
 	defer hookMapLock.Unlock()
