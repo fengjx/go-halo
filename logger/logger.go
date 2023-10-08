@@ -71,6 +71,8 @@ func New(logLevel string, logFile string, maxSizeMB int, maxDays int, opts ...Op
 	encoderConfig := zap.NewProductionEncoderConfig()
 	encoderConfig.TimeKey = "time"
 	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
+	encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
+
 	core := zapcore.NewCore(
 		zapcore.NewJSONEncoder(encoderConfig),
 		w,
@@ -81,7 +83,17 @@ func New(logLevel string, logFile string, maxSizeMB int, maxDays int, opts ...Op
 }
 
 func NewConsole() Logger {
-	l, _ := zap.NewDevelopment()
+	encoderConfig := zap.NewProductionEncoderConfig()
+	encoderConfig.TimeKey = "time"
+	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
+	encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
+
+	config := zap.NewDevelopmentConfig()
+	config.EncoderConfig = encoderConfig
+	config.OutputPaths = []string{"stdout"}
+	config.Level.SetLevel(zapcore.DebugLevel)
+
+	l, _ := config.Build()
 	return NewWithZap(l, true)
 }
 
