@@ -80,6 +80,7 @@ func New(logLevel Level, logFile string, maxSizeMB int, maxDays int, opts ...Opt
 	encoderConfig := zap.NewProductionEncoderConfig()
 	encoderConfig.TimeKey = "time"
 	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
+	encoderConfig.FunctionKey = "fn"
 	encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
 
 	core := zapcore.NewCore(
@@ -87,7 +88,7 @@ func New(logLevel Level, logFile string, maxSizeMB int, maxDays int, opts ...Opt
 		w,
 		zapcore.Level(logLevel),
 	)
-	l := zap.New(core)
+	l := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zap.DPanicLevel))
 	return NewWithZap(l, ops.openTrace)
 }
 
@@ -95,6 +96,7 @@ func NewConsole() Logger {
 	encoderConfig := zap.NewProductionEncoderConfig()
 	encoderConfig.TimeKey = "time"
 	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
+	encoderConfig.FunctionKey = "fn"
 	encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
 
 	config := zap.NewDevelopmentConfig()
@@ -107,6 +109,7 @@ func NewConsole() Logger {
 }
 
 func NewWithZap(l *zap.Logger, openTrace bool) Logger {
+	l = l.WithOptions(zap.AddCallerSkip(1))
 	return &logger{
 		level:     Level(l.Level()),
 		log:       l,
