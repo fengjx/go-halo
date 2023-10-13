@@ -17,13 +17,13 @@ const (
 )
 
 type Logger interface {
-	With(ctx context.Context, args ...interface{}) Logger
+	With(fields ...zap.Field) Logger
 
-	Debug(args ...interface{})
-	Info(args ...interface{})
-	Warn(args ...interface{})
-	Error(args ...interface{})
-	Panic(args ...interface{})
+	Debug(msg string, fields ...zap.Field)
+	Info(msg string, fields ...zap.Field)
+	Warn(msg string, fields ...zap.Field)
+	Error(msg string, fields ...zap.Field)
+	Panic(msg string, fields ...zap.Field)
 
 	Debugf(format string, args ...interface{})
 	Infof(format string, args ...interface{})
@@ -31,8 +31,15 @@ type Logger interface {
 	Errorf(format string, args ...interface{})
 	Panicf(format string, args ...interface{})
 
+	Debugw(msg string, keysAndValues ...interface{})
+	Infow(msg string, keysAndValues ...interface{})
+	Warnw(msg string, keysAndValues ...interface{})
+	Errorw(msg string, keysAndValues ...interface{})
+	Panicw(msg string, keysAndValues ...interface{})
+
 	Flush()
 
+	SetLevel(level Level)
 	SetLocalTraceID(traceID string)
 	SetLocalContext(ctx context.Context)
 	GetLocalContext() context.Context
@@ -40,7 +47,9 @@ type Logger interface {
 }
 
 type logger struct {
-	adapter   *zap.SugaredLogger
+	level     Level
+	log       *zap.Logger
+	sugar     *zap.SugaredLogger
 	traceMap  sync.Map
 	openTrace bool
 }
@@ -94,105 +103,140 @@ func NewConsole() Logger {
 	config.Level.SetLevel(zapcore.DebugLevel)
 
 	l, _ := config.Build()
-	return NewWithZap(l, true)
+	return NewWithZap(l, false)
 }
 
 func NewWithZap(l *zap.Logger, openTrace bool) Logger {
 	return &logger{
-		adapter:   l.Sugar(),
+		level:     Level(l.Level()),
+		log:       l,
+		sugar:     l.Sugar(),
 		openTrace: openTrace,
 	}
 }
 
-func (l *logger) With(ctx context.Context, args ...interface{}) Logger {
-	gid := goid.Get()
-	args = append(args, zap.Int64("goid", gid))
-	if l.openTrace && ctx == nil {
-		ctx = l.GetLocalContext()
-	}
-	if ctx != nil {
-		if id, ok := ctx.Value(TraceIDKey).(string); ok {
-			args = append(args, zap.String("traceId", id))
+func (l *logger) With(fields ...zap.Field) Logger {
+	if len(fields) > 0 {
+		return &logger{
+			log:       l.log.With(fields...),
+			sugar:     l.sugar,
+			openTrace: l.openTrace,
 		}
-	}
-	if len(args) > 0 {
-		return &logger{adapter: l.adapter.With(args...)}
 	}
 	return l
 }
 
-func (l *logger) Debug(args ...interface{}) {
+func (l *logger) Debug(msg string, fields ...zap.Field) {
 	if !l.checkLevel(DebugLevel) {
 		return
 	}
-	l.With(nil).(*logger).adapter.Debug(args...)
+	l.log.Debug(msg, l.addFields(fields)...)
+}
+
+func (l *logger) Info(msg string, fields ...zap.Field) {
+	if !l.checkLevel(InfoLevel) {
+		return
+	}
+	l.log.Info(msg, l.addFields(fields)...)
+}
+
+func (l *logger) Warn(msg string, fields ...zap.Field) {
+	if !l.checkLevel(WarnLevel) {
+		return
+	}
+	l.log.Warn(msg, l.addFields(fields)...)
+}
+
+func (l *logger) Error(msg string, fields ...zap.Field) {
+	if !l.checkLevel(ErrorLevel) {
+		return
+	}
+	l.log.Error(msg, l.addFields(fields)...)
+}
+
+func (l *logger) Panic(msg string, fields ...zap.Field) {
+	if !l.checkLevel(PanicLevel) {
+		return
+	}
+	l.log.Panic(msg, l.addFields(fields)...)
 }
 
 func (l *logger) Debugf(format string, args ...interface{}) {
 	if !l.checkLevel(DebugLevel) {
 		return
 	}
-	l.With(nil).(*logger).adapter.Debugf(format, args...)
-}
-
-func (l *logger) Info(args ...interface{}) {
-	if !l.checkLevel(InfoLevel) {
-		return
-	}
-	l.With(nil).(*logger).adapter.Info(args...)
+	l.sugar.With().Debugf(format, args...)
 }
 
 func (l *logger) Infof(format string, args ...interface{}) {
 	if !l.checkLevel(InfoLevel) {
 		return
 	}
-	l.With(nil).(*logger).adapter.Infof(format, args...)
-}
-
-func (l *logger) Warn(args ...interface{}) {
-	if !l.checkLevel(WarnLevel) {
-		return
-	}
-	l.With(nil).(*logger).adapter.Warn(args...)
+	l.sugar.With().Infof(format, args...)
 }
 
 func (l *logger) Warnf(format string, args ...interface{}) {
 	if !l.checkLevel(WarnLevel) {
 		return
 	}
-	l.With(nil).(*logger).adapter.Warnf(format, args...)
-}
-
-func (l *logger) Error(args ...interface{}) {
-	if !l.checkLevel(ErrorLevel) {
-		return
-	}
-	l.With(nil).(*logger).adapter.Error(args...)
+	l.sugar.With().Warnf(format, args...)
 }
 
 func (l *logger) Errorf(format string, args ...interface{}) {
 	if !l.checkLevel(ErrorLevel) {
 		return
 	}
-	l.With(nil).(*logger).adapter.Errorf(format, args...)
-}
-
-func (l *logger) Panic(args ...interface{}) {
-	if !l.checkLevel(PanicLevel) {
-		return
-	}
-	l.With(nil).(*logger).adapter.Panic(args...)
+	l.sugar.With().Errorf(format, args...)
 }
 
 func (l *logger) Panicf(format string, args ...interface{}) {
 	if !l.checkLevel(PanicLevel) {
 		return
 	}
-	l.With(nil).(*logger).adapter.Panicf(format, args...)
+	l.sugar.With().Panicf(format, args...)
+}
+
+func (l *logger) Debugw(format string, keysAndValues ...interface{}) {
+	if !l.checkLevel(DebugLevel) {
+		return
+	}
+	l.sugar.With().Debugw(format, l.addArgs(keysAndValues)...)
+}
+
+func (l *logger) Infow(format string, keysAndValues ...interface{}) {
+	if !l.checkLevel(InfoLevel) {
+		return
+	}
+	l.sugar.With().Infow(format, l.addArgs(keysAndValues)...)
+}
+
+func (l *logger) Warnw(format string, keysAndValues ...interface{}) {
+	if !l.checkLevel(WarnLevel) {
+		return
+	}
+	l.sugar.With().Warnw(format, l.addArgs(keysAndValues)...)
+}
+
+func (l *logger) Errorw(format string, keysAndValues ...interface{}) {
+	if !l.checkLevel(ErrorLevel) {
+		return
+	}
+	l.sugar.With().Errorw(format, l.addArgs(keysAndValues)...)
+}
+
+func (l *logger) Panicw(format string, keysAndValues ...interface{}) {
+	if !l.checkLevel(PanicLevel) {
+		return
+	}
+	l.sugar.With().Panicw(format, l.addArgs(keysAndValues)...)
+}
+
+func (l *logger) SetLevel(level Level) {
+	l.level = level
 }
 
 func (l *logger) Flush() {
-	err := l.adapter.Sync()
+	err := l.log.Sync()
 	if err != nil {
 		log.Printf("log flush err - %v \n", err)
 	}
@@ -225,7 +269,29 @@ func (l *logger) RemoveLocalContext() {
 }
 
 func (l *logger) checkLevel(lv Level) bool {
-	return Level(l.adapter.Level()) <= lv
+	return Level(l.log.Level()) <= lv
+}
+
+func (l *logger) addFields(fields []zap.Field) (fs []zap.Field) {
+	fs = []zap.Field{zap.Int64("goid", goid.Get())}
+	if l.openTrace {
+		if id, ok := l.GetLocalContext().Value(TraceIDKey).(string); ok {
+			fields = append(fields, zap.String("traceId", id))
+		}
+	}
+	fs = append(fs, fields...)
+	return
+}
+
+func (l *logger) addArgs(args []interface{}) (retArgs []interface{}) {
+	retArgs = []interface{}{"goid", goid.Get()}
+	if l.openTrace {
+		if traceId, ok := l.GetLocalContext().Value(TraceIDKey).(string); ok {
+			retArgs = append(retArgs, "traceId", traceId)
+		}
+	}
+	retArgs = append(retArgs, args...)
+	return
 }
 
 type Level zapcore.Level
