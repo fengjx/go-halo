@@ -57,7 +57,7 @@ func WithTrace() Option {
 	}
 }
 
-func New(logLevel string, logFile string, maxSizeMB int, maxDays int, opts ...Option) Logger {
+func New(logLevel Level, logFile string, maxSizeMB int, maxDays int, opts ...Option) Logger {
 	ops := &Options{}
 	for _, opt := range opts {
 		opt(ops)
@@ -74,7 +74,7 @@ func New(logLevel string, logFile string, maxSizeMB int, maxDays int, opts ...Op
 	core := zapcore.NewCore(
 		zapcore.NewJSONEncoder(encoderConfig),
 		w,
-		zapcore.Level(GetLogLevel(logLevel)),
+		zapcore.Level(logLevel),
 	)
 	l := zap.New(core)
 	return NewWithZap(l, ops.openTrace)
