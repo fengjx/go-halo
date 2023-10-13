@@ -23,7 +23,7 @@ func TestConsole(t *testing.T) {
 }
 
 func TestFile(t *testing.T) {
-	log := New("debug", "./logs/tes.log", 100, 3, WithTrace())
+	log := New(DebugLevel, "./logs/tes.log", 100, 3, WithTrace())
 	wg := &sync.WaitGroup{}
 	count := 1000
 	wg.Add(count)
