@@ -9,22 +9,22 @@ import (
 )
 
 type Options struct {
-	cycle time.Duration
+	interval time.Duration
 }
 
 type Option func(*Options)
 
-func WithDuration(cycle time.Duration) Option {
+func WithInterval(interval time.Duration) Option {
 	return func(opts *Options) {
-		opts.cycle = cycle
+		opts.interval = interval
 	}
 }
 
 // order 越小优先级越高
 type hookFun struct {
-	handler func()
-	order   int
-	cycle   time.Duration
+	handler  func()
+	order    int
+	interval time.Duration
 }
 
 var hookMap map[string][]hookFun
@@ -42,9 +42,9 @@ func AddCustomStartHook(name string, handler func(), order int, opts ...Option) 
 		item(opt)
 	}
 	hookMap[name] = append(hookMap[name], hookFun{
-		handler: handler,
-		order:   order,
-		cycle:   opt.cycle,
+		handler:  handler,
+		order:    order,
+		interval: opt.interval,
 	})
 }
 
@@ -77,8 +77,8 @@ func execHooks(hooks []hookFun, wg *sync.WaitGroup) {
 		go func() {
 			defer wg.Done()
 			f.handler()
-			if f.cycle > 0 {
-				tk := time.NewTicker(f.cycle)
+			if f.interval > 0 {
+				tk := time.NewTicker(f.interval)
 				for range tk.C {
 					f.handler()
 				}
