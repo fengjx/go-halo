@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/samber/lo"
+
+	"github.com/fengjx/go-halo/halo"
 )
 
 type Options struct {
@@ -78,10 +80,13 @@ func execHooks(hooks []hookFun, wg *sync.WaitGroup) {
 			defer wg.Done()
 			f.handler()
 			if f.interval > 0 {
-				tk := time.NewTicker(f.interval)
-				for range tk.C {
-					f.handler()
-				}
+				go func() {
+					defer halo.Recover()
+					tk := time.NewTicker(f.interval)
+					for range tk.C {
+						f.handler()
+					}
+				}()
 			}
 		}()
 	}
