@@ -14,8 +14,8 @@ func Lookup(filename string, tier int) (path string, err error) {
 			filename = filepath.Join("../", filename)
 			continue
 		}
-		abs, _ := filepath.Abs(path)
-		return abs, nil
+		path, _ = filepath.Abs(filename)
+		return path, nil
 	}
 	return "", os.ErrNotExist
 }

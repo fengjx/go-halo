@@ -7,7 +7,7 @@ import (
 )
 
 func TestLookup(t *testing.T) {
-	absPath, err := fs.Lookup("utils", 3)
+	absPath, err := fs.Lookup("fs/file.go", 3)
 	if err != nil {
 		t.Fatal(err)
 	}
