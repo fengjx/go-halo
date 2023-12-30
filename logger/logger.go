@@ -17,13 +17,17 @@ type Logger interface {
 	Info(msg string, fields ...zap.Field)
 	Warn(msg string, fields ...zap.Field)
 	Error(msg string, fields ...zap.Field)
+	DPanic(msg string, fields ...zap.Field)
 	Panic(msg string, fields ...zap.Field)
+	Fatal(msg string, fields ...zap.Field)
 
 	Debugf(format string, args ...interface{})
 	Infof(format string, args ...interface{})
 	Warnf(format string, args ...interface{})
 	Errorf(format string, args ...interface{})
+	DPanicf(format string, args ...interface{})
 	Panicf(format string, args ...interface{})
+	Fatalf(format string, args ...interface{})
 
 	Flush()
 
@@ -119,11 +123,25 @@ func (l *logger) Error(msg string, fields ...zap.Field) {
 	l.log.Error(msg, fields...)
 }
 
+func (l *logger) DPanic(format string, fields ...zap.Field) {
+	if !l.checkLevel(DPanicLevel) {
+		return
+	}
+	l.log.DPanic(format, fields...)
+}
+
 func (l *logger) Panic(msg string, fields ...zap.Field) {
 	if !l.checkLevel(PanicLevel) {
 		return
 	}
 	l.log.Panic(msg, fields...)
+}
+
+func (l *logger) Fatal(format string, fields ...zap.Field) {
+	if !l.checkLevel(FatalLevel) {
+		return
+	}
+	l.log.Fatal(format, fields...)
 }
 
 func (l *logger) Debugf(format string, args ...interface{}) {
@@ -154,11 +172,25 @@ func (l *logger) Errorf(format string, args ...interface{}) {
 	l.log.Error(getMessage(format, args))
 }
 
+func (l *logger) DPanicf(format string, args ...interface{}) {
+	if !l.checkLevel(DPanicLevel) {
+		return
+	}
+	l.log.DPanic(getMessage(format, args))
+}
+
 func (l *logger) Panicf(format string, args ...interface{}) {
 	if !l.checkLevel(PanicLevel) {
 		return
 	}
 	l.log.Panic(getMessage(format, args))
+}
+
+func (l *logger) Fatalf(format string, args ...interface{}) {
+	if !l.checkLevel(FatalLevel) {
+		return
+	}
+	l.log.Fatal(getMessage(format, args))
 }
 
 func (l *logger) SetLevel(level Level) {
@@ -198,24 +230,26 @@ var (
 )
 
 func GetLogLevel(logLevel string) Level {
-	var level zapcore.Level
+	var level Level
 	switch strings.ToLower(logLevel) {
+	case "fatal":
+		level = FatalLevel
 	case "panic":
-		level = zapcore.PanicLevel
+		level = PanicLevel
 	case "dpanic":
-		level = zapcore.DPanicLevel
+		level = DPanicLevel
 	case "error":
-		level = zapcore.ErrorLevel
+		level = ErrorLevel
 	case "warn":
-		level = zapcore.WarnLevel
+		level = WarnLevel
 	case "info":
-		level = zapcore.InfoLevel
+		level = InfoLevel
 	case "debug":
-		level = zapcore.DebugLevel
+		level = DebugLevel
 	default:
-		level = zapcore.InfoLevel
+		level = InfoLevel
 	}
-	return Level(level)
+	return level
 }
 
 func getMessage(template string, fmtArgs []interface{}) string {
