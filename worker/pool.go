@@ -3,11 +3,12 @@ package worker
 import (
 	"errors"
 	"fmt"
-	"github.com/fengjx/go-halo/utils"
 	"log"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/fengjx/go-halo/halo"
 )
 
 var (
@@ -80,8 +81,8 @@ func (p *Pool) doTask(t Task) {
 	go func() {
 		defer func() {
 			if err := recover(); err != nil {
-				stack := utils.Stack(10)
-				p.log.Printf("recover panic[%s] and exit - $s\n", err, stack)
+				stack := halo.Stack(10)
+				p.log.Printf("recover panic[%s] and exit - %s\n", err, stack)
 			}
 			p.wg.Done()
 			<-p.active
