@@ -1,4 +1,4 @@
-package httpclient
+package httpc
 
 import (
 	"bytes"
@@ -12,25 +12,25 @@ import (
 
 const (
 	// MethodGet HTTP method
-	MethodGet = "GET"
+	MethodGet = http.MethodGet
 
 	// MethodPost HTTP method
-	MethodPost = "POST"
+	MethodPost = http.MethodPost
 
 	// MethodPut HTTP method
-	MethodPut = "PUT"
+	MethodPut = http.MethodPut
 
 	// MethodDelete HTTP method
-	MethodDelete = "DELETE"
+	MethodDelete = http.MethodDelete
 
 	// MethodPatch HTTP method
-	MethodPatch = "PATCH"
+	MethodPatch = http.MethodPatch
 
 	// MethodHead HTTP method
-	MethodHead = "HEAD"
+	MethodHead = http.MethodHead
 
 	// MethodOptions HTTP method
-	MethodOptions = "OPTIONS"
+	MethodOptions = http.MethodOptions
 
 	plainTextType   = "text/plain; charset=utf-8"
 	jsonContentType = "application/json"
