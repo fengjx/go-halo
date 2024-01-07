@@ -1,7 +1,19 @@
 package json
 
 import (
+	"io"
+
 	jsoniter "github.com/json-iterator/go"
+)
+
+type (
+	// Any alias to jsoniter.Any
+	Any = jsoniter.Any
+
+	// Encoder alias to jsoniter.Encoder
+	Encoder = jsoniter.Encoder
+	// Decoder alias to jsoniter.Decoder
+	Decoder = jsoniter.Decoder
 )
 
 // ToJson 对象转 json 字符串
@@ -44,13 +56,23 @@ func FromBytes(bytes []byte, target interface{}) error {
 }
 
 // GetNodeFromString 通过路径，快速从json字符串解析数据
-func GetNodeFromString(jsonStr string, path interface{}) jsoniter.Any {
+func GetNodeFromString(jsonStr string, path interface{}) Any {
 	return jsoniter.Get([]byte(jsonStr), path)
 }
 
 // GetNodeFromBytes 通过路径，快速从字节数组解析数据
-func GetNodeFromBytes(byt []byte, path interface{}) jsoniter.Any {
+func GetNodeFromBytes(byt []byte, path interface{}) Any {
 	return jsoniter.Get([]byte(byt), path)
+}
+
+// NewEncoder jsoniter.NewEncoder
+func NewEncoder(w io.Writer) *Encoder {
+	return jsoniter.NewEncoder(w)
+}
+
+// NewDecoder jsoniter.NewDecoder
+func NewDecoder(r io.Reader) *Decoder {
+	return jsoniter.NewDecoder(r)
 }
 
 // DelayJsoniter 通过重写 string() 方法来延迟执行json序列化
