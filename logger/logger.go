@@ -43,7 +43,7 @@ func New(logLevel Level, logFile string, maxSizeMB int, maxDays int) Logger {
 	w := zapcore.AddSync(&lumberjack.Logger{
 		Filename:   logFile,
 		MaxSize:    maxSizeMB,
-		MaxBackups: 3,
+		MaxBackups: maxDays * 3,
 		MaxAge:     maxDays,
 	})
 	encoderConfig := zap.NewProductionEncoderConfig()
@@ -57,12 +57,12 @@ func New(logLevel Level, logFile string, maxSizeMB int, maxDays int) Logger {
 		w,
 		zapcore.Level(logLevel),
 	)
-	l := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zap.DPanicLevel))
+	l := zap.New(core, zap.AddCaller())
 	return newWithZap(l)
 }
 
 func NewConsole() Logger {
-	encoderConfig := zap.NewProductionEncoderConfig()
+	encoderConfig := zap.NewDevelopmentEncoderConfig()
 	encoderConfig.TimeKey = "time"
 	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
 	encoderConfig.FunctionKey = "fn"
@@ -78,7 +78,7 @@ func NewConsole() Logger {
 }
 
 func newWithZap(l *zap.Logger) Logger {
-	l = l.WithOptions(zap.AddCallerSkip(1))
+	l = l.WithOptions(zap.AddCallerSkip(1), zap.AddStacktrace(zap.ErrorLevel))
 	return &logger{
 		level: Level(l.Level()),
 		log:   l,

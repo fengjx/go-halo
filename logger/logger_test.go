@@ -12,6 +12,14 @@ import (
 	"github.com/fengjx/go-halo/logger"
 )
 
+func TestLogLevel(t *testing.T) {
+	log := logger.NewConsole()
+	log.Debug("debug msg")
+	log.Info("info msg")
+	log.Warn("warn msg")
+	log.Error("error msg")
+}
+
 func TestConsole(t *testing.T) {
 	log := logger.NewConsole()
 	wg := &sync.WaitGroup{}
