@@ -1,6 +1,7 @@
 package json_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,4 +19,24 @@ func TestDelay(t *testing.T) {
 		"foo": "bar",
 	}
 	t.Logf("delay json: %s", json.ToJsonDelay(data))
+}
+
+func TestEncoder(t *testing.T) {
+	data := map[string]any{
+		"msg": "ok",
+		"data": []map[string]any{
+			{
+				"id":  2,
+				"foo": "bar2",
+			},
+			{
+				"id":  3,
+				"foo": "bar3",
+			},
+		},
+	}
+	err := json.NewEncoder(os.Stdout).Encode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
 }

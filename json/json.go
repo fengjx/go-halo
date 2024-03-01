@@ -2,8 +2,10 @@ package json
 
 import (
 	"io"
+	"time"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/json-iterator/go/extra"
 )
 
 type (
@@ -15,6 +17,10 @@ type (
 	// Decoder alias to jsoniter.Decoder
 	Decoder = jsoniter.Decoder
 )
+
+func init() {
+
+}
 
 // ToJson 对象转 json 字符串
 func ToJson(data interface{}) (string, error) {
@@ -73,6 +79,11 @@ func NewEncoder(w io.Writer) *Encoder {
 // NewDecoder jsoniter.NewDecoder
 func NewDecoder(r io.Reader) *Decoder {
 	return jsoniter.NewDecoder(r)
+}
+
+// RegisterTimeAsInt64Codec 注册时间类型为 int64
+func RegisterTimeAsInt64Codec(precision time.Duration) {
+	extra.RegisterTimeAsInt64Codec(precision)
 }
 
 // DelayJsoniter 通过重写 string() 方法来延迟执行json序列化
