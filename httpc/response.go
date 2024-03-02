@@ -2,7 +2,7 @@
 // resty source code and usage is governed by a MIT style
 // license that can be found in the LICENSE file.
 
-package httpclient
+package httpc
 
 import (
 	"io"
@@ -121,14 +121,19 @@ func (r *Response) RawBody() io.ReadCloser {
 	return r.RawResponse.Body
 }
 
-// IsSuccess method returns true if HTTP status `code >= 200 and <= 299` otherwise false.
+// IsSuccess `code >= 200 and <= 299` 时返回true
 func (r *Response) IsSuccess() bool {
 	return r.StatusCode() > 199 && r.StatusCode() < 300
 }
 
-// IsError method returns true if HTTP status `code >= 400` otherwise false.
+// IsError `code > 400` 时候返回 true
 func (r *Response) IsError() bool {
 	return r.StatusCode() > 399
+}
+
+// FmtBody body bytes 转对象
+func (r *Response) FmtBody(model interface{}) error {
+	return json.FromBytes(r.Body(), model)
 }
 
 //‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
@@ -137,8 +142,4 @@ func (r *Response) IsError() bool {
 
 func (r *Response) setReceivedAt() {
 	r.receivedAt = time.Now()
-}
-
-func (r *Response) fmtBody(model interface{}) error {
-	return json.FromBytes(r.Body(), model)
 }

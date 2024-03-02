@@ -1,19 +1,13 @@
 package logger
 
 import (
-	"context"
+	"fmt"
 	"log"
 	"strings"
-	"sync"
 
-	"github.com/petermattis/goid"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
-)
-
-const (
-	TraceIDKey = "X-Trace-ID"
 )
 
 type Logger interface {
@@ -23,58 +17,33 @@ type Logger interface {
 	Info(msg string, fields ...zap.Field)
 	Warn(msg string, fields ...zap.Field)
 	Error(msg string, fields ...zap.Field)
+	DPanic(msg string, fields ...zap.Field)
 	Panic(msg string, fields ...zap.Field)
+	Fatal(msg string, fields ...zap.Field)
 
 	Debugf(format string, args ...interface{})
 	Infof(format string, args ...interface{})
 	Warnf(format string, args ...interface{})
 	Errorf(format string, args ...interface{})
+	DPanicf(format string, args ...interface{})
 	Panicf(format string, args ...interface{})
-
-	Debugw(msg string, keysAndValues ...interface{})
-	Infow(msg string, keysAndValues ...interface{})
-	Warnw(msg string, keysAndValues ...interface{})
-	Errorw(msg string, keysAndValues ...interface{})
-	Panicw(msg string, keysAndValues ...interface{})
+	Fatalf(format string, args ...interface{})
 
 	Flush()
 
 	SetLevel(level Level)
-	SetLocalTraceID(traceID string)
-	SetLocalContext(ctx context.Context)
-	GetLocalContext() context.Context
-	RemoveLocalContext()
 }
 
 type logger struct {
-	level     Level
-	log       *zap.Logger
-	sugar     *zap.SugaredLogger
-	traceMap  sync.Map
-	openTrace bool
+	level Level
+	log   *zap.Logger
 }
 
-type Options struct {
-	openTrace bool
-}
-
-type Option func(*Options)
-
-func WithTrace() Option {
-	return func(ops *Options) {
-		ops.openTrace = true
-	}
-}
-
-func New(logLevel Level, logFile string, maxSizeMB int, maxDays int, opts ...Option) Logger {
-	ops := &Options{}
-	for _, opt := range opts {
-		opt(ops)
-	}
+func New(logLevel Level, logFile string, maxSizeMB int, maxDays int) Logger {
 	w := zapcore.AddSync(&lumberjack.Logger{
 		Filename:   logFile,
 		MaxSize:    maxSizeMB,
-		MaxBackups: 3,
+		MaxBackups: maxDays * 3,
 		MaxAge:     maxDays,
 	})
 	encoderConfig := zap.NewProductionEncoderConfig()
@@ -88,12 +57,12 @@ func New(logLevel Level, logFile string, maxSizeMB int, maxDays int, opts ...Opt
 		w,
 		zapcore.Level(logLevel),
 	)
-	l := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zap.DPanicLevel))
-	return NewWithZap(l, ops.openTrace)
+	l := zap.New(core, zap.AddCaller())
+	return newWithZap(l)
 }
 
 func NewConsole() Logger {
-	encoderConfig := zap.NewProductionEncoderConfig()
+	encoderConfig := zap.NewDevelopmentEncoderConfig()
 	encoderConfig.TimeKey = "time"
 	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
 	encoderConfig.FunctionKey = "fn"
@@ -105,25 +74,22 @@ func NewConsole() Logger {
 	config.Level.SetLevel(zapcore.DebugLevel)
 
 	l, _ := config.Build()
-	return NewWithZap(l, false)
+	return newWithZap(l)
 }
 
-func NewWithZap(l *zap.Logger, openTrace bool) Logger {
-	l = l.WithOptions(zap.AddCallerSkip(1))
+func newWithZap(l *zap.Logger) Logger {
+	l = l.WithOptions(zap.AddCallerSkip(1), zap.AddStacktrace(zap.ErrorLevel))
 	return &logger{
-		level:     Level(l.Level()),
-		log:       l,
-		sugar:     l.Sugar(),
-		openTrace: openTrace,
+		level: Level(l.Level()),
+		log:   l,
 	}
 }
 
 func (l *logger) With(fields ...zap.Field) Logger {
 	if len(fields) > 0 {
 		return &logger{
-			log:       l.log.With(fields...),
-			sugar:     l.sugar,
-			openTrace: l.openTrace,
+			level: l.level,
+			log:   l.log.With(fields...),
 		}
 	}
 	return l
@@ -133,105 +99,98 @@ func (l *logger) Debug(msg string, fields ...zap.Field) {
 	if !l.checkLevel(DebugLevel) {
 		return
 	}
-	l.log.Debug(msg, l.addFields(fields)...)
+	l.log.Debug(msg, fields...)
 }
 
 func (l *logger) Info(msg string, fields ...zap.Field) {
 	if !l.checkLevel(InfoLevel) {
 		return
 	}
-	l.log.Info(msg, l.addFields(fields)...)
+	l.log.Info(msg, fields...)
 }
 
 func (l *logger) Warn(msg string, fields ...zap.Field) {
 	if !l.checkLevel(WarnLevel) {
 		return
 	}
-	l.log.Warn(msg, l.addFields(fields)...)
+	l.log.Warn(msg, fields...)
 }
 
 func (l *logger) Error(msg string, fields ...zap.Field) {
 	if !l.checkLevel(ErrorLevel) {
 		return
 	}
-	l.log.Error(msg, l.addFields(fields)...)
+	l.log.Error(msg, fields...)
+}
+
+func (l *logger) DPanic(format string, fields ...zap.Field) {
+	if !l.checkLevel(DPanicLevel) {
+		return
+	}
+	l.log.DPanic(format, fields...)
 }
 
 func (l *logger) Panic(msg string, fields ...zap.Field) {
 	if !l.checkLevel(PanicLevel) {
 		return
 	}
-	l.log.Panic(msg, l.addFields(fields)...)
+	l.log.Panic(msg, fields...)
+}
+
+func (l *logger) Fatal(format string, fields ...zap.Field) {
+	if !l.checkLevel(FatalLevel) {
+		return
+	}
+	l.log.Fatal(format, fields...)
 }
 
 func (l *logger) Debugf(format string, args ...interface{}) {
 	if !l.checkLevel(DebugLevel) {
 		return
 	}
-	l.sugar.With().Debugf(format, args...)
+	l.log.Debug(getMessage(format, args))
 }
 
 func (l *logger) Infof(format string, args ...interface{}) {
 	if !l.checkLevel(InfoLevel) {
 		return
 	}
-	l.sugar.With().Infof(format, args...)
+	l.log.Info(getMessage(format, args))
 }
 
 func (l *logger) Warnf(format string, args ...interface{}) {
 	if !l.checkLevel(WarnLevel) {
 		return
 	}
-	l.sugar.With().Warnf(format, args...)
+	l.log.Warn(getMessage(format, args))
 }
 
 func (l *logger) Errorf(format string, args ...interface{}) {
 	if !l.checkLevel(ErrorLevel) {
 		return
 	}
-	l.sugar.With().Errorf(format, args...)
+	l.log.Error(getMessage(format, args))
+}
+
+func (l *logger) DPanicf(format string, args ...interface{}) {
+	if !l.checkLevel(DPanicLevel) {
+		return
+	}
+	l.log.DPanic(getMessage(format, args))
 }
 
 func (l *logger) Panicf(format string, args ...interface{}) {
 	if !l.checkLevel(PanicLevel) {
 		return
 	}
-	l.sugar.With().Panicf(format, args...)
+	l.log.Panic(getMessage(format, args))
 }
 
-func (l *logger) Debugw(format string, keysAndValues ...interface{}) {
-	if !l.checkLevel(DebugLevel) {
+func (l *logger) Fatalf(format string, args ...interface{}) {
+	if !l.checkLevel(FatalLevel) {
 		return
 	}
-	l.sugar.With().Debugw(format, l.addArgs(keysAndValues)...)
-}
-
-func (l *logger) Infow(format string, keysAndValues ...interface{}) {
-	if !l.checkLevel(InfoLevel) {
-		return
-	}
-	l.sugar.With().Infow(format, l.addArgs(keysAndValues)...)
-}
-
-func (l *logger) Warnw(format string, keysAndValues ...interface{}) {
-	if !l.checkLevel(WarnLevel) {
-		return
-	}
-	l.sugar.With().Warnw(format, l.addArgs(keysAndValues)...)
-}
-
-func (l *logger) Errorw(format string, keysAndValues ...interface{}) {
-	if !l.checkLevel(ErrorLevel) {
-		return
-	}
-	l.sugar.With().Errorw(format, l.addArgs(keysAndValues)...)
-}
-
-func (l *logger) Panicw(format string, keysAndValues ...interface{}) {
-	if !l.checkLevel(PanicLevel) {
-		return
-	}
-	l.sugar.With().Panicw(format, l.addArgs(keysAndValues)...)
+	l.log.Fatal(getMessage(format, args))
 }
 
 func (l *logger) SetLevel(level Level) {
@@ -245,56 +204,8 @@ func (l *logger) Flush() {
 	}
 }
 
-func (l *logger) SetLocalTraceID(traceID string) {
-	ctx := l.GetLocalContext()
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	l.SetLocalContext(context.WithValue(ctx, TraceIDKey, traceID))
-}
-
-func (l *logger) SetLocalContext(ctx context.Context) {
-	gid := goid.Get()
-	l.traceMap.Store(gid, ctx)
-}
-
-func (l *logger) GetLocalContext() context.Context {
-	gid := goid.Get()
-	if value, ok := l.traceMap.Load(gid); ok {
-		return value.(context.Context)
-	}
-	return nil
-}
-
-func (l *logger) RemoveLocalContext() {
-	gid := goid.Get()
-	l.traceMap.Delete(gid)
-}
-
 func (l *logger) checkLevel(lv Level) bool {
 	return Level(l.log.Level()) <= lv
-}
-
-func (l *logger) addFields(fields []zap.Field) (fs []zap.Field) {
-	fs = []zap.Field{zap.Int64("goid", goid.Get())}
-	if l.openTrace {
-		if id, ok := l.GetLocalContext().Value(TraceIDKey).(string); ok {
-			fields = append(fields, zap.String("traceId", id))
-		}
-	}
-	fs = append(fs, fields...)
-	return
-}
-
-func (l *logger) addArgs(args []interface{}) (retArgs []interface{}) {
-	retArgs = []interface{}{"goid", goid.Get()}
-	if l.openTrace {
-		if traceId, ok := l.GetLocalContext().Value(TraceIDKey).(string); ok {
-			retArgs = append(retArgs, "traceId", traceId)
-		}
-	}
-	retArgs = append(retArgs, args...)
-	return
 }
 
 type Level zapcore.Level
@@ -319,22 +230,41 @@ var (
 )
 
 func GetLogLevel(logLevel string) Level {
-	var level zapcore.Level
+	var level Level
 	switch strings.ToLower(logLevel) {
+	case "fatal":
+		level = FatalLevel
 	case "panic":
-		level = zapcore.PanicLevel
+		level = PanicLevel
 	case "dpanic":
-		level = zapcore.DPanicLevel
+		level = DPanicLevel
 	case "error":
-		level = zapcore.ErrorLevel
+		level = ErrorLevel
 	case "warn":
-		level = zapcore.WarnLevel
+		level = WarnLevel
 	case "info":
-		level = zapcore.InfoLevel
+		level = InfoLevel
 	case "debug":
-		level = zapcore.DebugLevel
+		level = DebugLevel
 	default:
-		level = zapcore.InfoLevel
+		level = InfoLevel
 	}
-	return Level(level)
+	return level
+}
+
+func getMessage(template string, fmtArgs []interface{}) string {
+	if len(fmtArgs) == 0 {
+		return template
+	}
+
+	if template != "" {
+		return fmt.Sprintf(template, fmtArgs...)
+	}
+
+	if len(fmtArgs) == 1 {
+		if str, ok := fmtArgs[0].(string); ok {
+			return str
+		}
+	}
+	return fmt.Sprint(fmtArgs...)
 }

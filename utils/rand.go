@@ -3,6 +3,8 @@ package utils
 import (
 	"math/rand"
 	"time"
+
+	"github.com/samber/lo"
 )
 
 var r = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -17,4 +19,8 @@ func RandomInt(min int, max int) int {
 
 func RandomInt32(min int32, max int32) int32 {
 	return r.Int31n(max-min+1) + min
+}
+
+func RandomString(length int) string {
+	return lo.RandomString(length, lo.LettersCharset)
 }
