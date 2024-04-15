@@ -16,6 +16,7 @@ type Options struct {
 
 type Option func(*Options)
 
+// WithInterval 定时执行
 func WithInterval(interval time.Duration) Option {
 	return func(opts *Options) {
 		opts.interval = interval
@@ -36,7 +37,8 @@ func init() {
 	hookMap = make(map[string][]hookFun)
 }
 
-func AddCustomStartHook(name string, handler func(), order int, opts ...Option) {
+// AddHook 注册回调
+func AddHook(name string, order int, handler func(), opts ...Option) {
 	hookMapLock.Lock()
 	defer hookMapLock.Unlock()
 	opt := &Options{}
@@ -50,7 +52,8 @@ func AddCustomStartHook(name string, handler func(), order int, opts ...Option) 
 	})
 }
 
-func DoCustomHooks(name string) {
+// DoHooks 执行回调
+func DoHooks(name string) {
 	doHooks(hookMap[name])
 }
 
