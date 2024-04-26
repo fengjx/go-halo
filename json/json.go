@@ -86,6 +86,12 @@ func RegisterTimeAsInt64Codec(precision time.Duration) {
 	extra.RegisterTimeAsInt64Codec(precision)
 }
 
+// RegisterFuzzyDecoders 注册解码器支持容错
+// string 和 number 自动转换
+func RegisterFuzzyDecoders() {
+	extra.RegisterFuzzyDecoders()
+}
+
 // DelayJsoniter 通过重写 string() 方法来延迟执行json序列化
 type DelayJsoniter struct {
 	data any
