@@ -86,8 +86,7 @@ func RegisterTimeAsInt64Codec(precision time.Duration) {
 	extra.RegisterTimeAsInt64Codec(precision)
 }
 
-// RegisterFuzzyDecoders 注册解码器支持容错
-// string 和 number 自动转换
+// RegisterFuzzyDecoders 处理字符串和数字自动转换
 func RegisterFuzzyDecoders() {
 	extra.RegisterFuzzyDecoders()
 }
