@@ -79,7 +79,6 @@ func NewConsole(opts ...zap.Option) Logger {
 
 func newWithZap(l *zap.Logger, opts ...zap.Option) Logger {
 	options := []zap.Option{
-		zap.AddCallerSkip(1),
 		zap.AddStacktrace(zap.PanicLevel),
 	}
 	options = append(options, opts...)
