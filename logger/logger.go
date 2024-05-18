@@ -3,12 +3,23 @@ package logger
 import (
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
+
+const (
+	backupDayFormat = "20060102"
+)
+
+// currentTime 时间获取
+// 参考 lumberjack 可以替换这个实现来做一些 go test，例如按日期分割日志
+var currentTime = time.Now
 
 type Logger interface {
 	With(fields ...zap.Field) Logger
@@ -39,13 +50,24 @@ type logger struct {
 	log   *zap.Logger
 }
 
+// New 创建 Logger
+// maxSizeMB 如果不希望按日志大小切割，则传 0
 func New(logLevel Level, logFile string, maxSizeMB int, maxDays int, opts ...zap.Option) Logger {
-	w := zapcore.AddSync(&lumberjack.Logger{
-		Filename:   logFile,
-		MaxSize:    maxSizeMB,
-		MaxBackups: maxDays * 3,
-		MaxAge:     maxDays,
-	})
+	jl := &lumberjack.Logger{
+		Filename:  logFile,
+		MaxSize:   maxSizeMB,
+		MaxAge:    maxDays,
+		LocalTime: true,
+	}
+	rw := &rotateWriter{
+		Logger: jl,
+	}
+	fstat, err := os.Stat(logFile)
+	if err == nil && fstat.Size() > 0 {
+		// 记录文件最后修改位置
+		rw.date = fstat.ModTime().Format(backupDayFormat)
+	}
+	w := zapcore.AddSync(rw)
 	encoderConfig := zap.NewProductionEncoderConfig()
 	encoderConfig.TimeKey = "time"
 	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
@@ -55,7 +77,7 @@ func New(logLevel Level, logFile string, maxSizeMB int, maxDays int, opts ...zap
 	core := zapcore.NewCore(
 		zapcore.NewJSONEncoder(encoderConfig),
 		w,
-		zapcore.Level(logLevel),
+		zap.NewAtomicLevelAt(zapcore.Level(logLevel)),
 	)
 	l := zap.New(core, zap.AddCaller())
 	return newWithZap(l, opts...)
@@ -271,4 +293,18 @@ func getMessage(template string, fmtArgs []interface{}) string {
 		}
 	}
 	return fmt.Sprint(fmtArgs...)
+}
+
+func backupDayName(name string, local bool) string {
+	dir := filepath.Dir(name)
+	filename := filepath.Base(name)
+	ext := filepath.Ext(filename)
+	prefix := filename[:len(filename)-len(ext)]
+	t := currentTime()
+	if !local {
+		t = t.UTC()
+	}
+
+	date := t.Format(backupDayFormat)
+	return filepath.Join(dir, fmt.Sprintf("%s-%s%s", prefix, date, ext))
 }
