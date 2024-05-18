@@ -49,8 +49,12 @@ func TestConsole(t *testing.T) {
 }
 
 func TestFile(t *testing.T) {
-	log1 := New(DebugLevel, "./logs/1.log", 0, 1)
-	log2 := New(DebugLevel, "./logs/2.log", 0, 1)
+	log1 := New(&Options{
+		LogFile: "./logs/1.log",
+	})
+	log2 := New(&Options{
+		LogFile: "./logs/2.log",
+	})
 	wg := &sync.WaitGroup{}
 	count := 1000
 	wg.Add(count)
@@ -78,7 +82,9 @@ func TestRotate(t *testing.T) {
 	currentTime = fakeTime
 
 	logFilepath := "./logs/rotate1.log"
-	log := New(DebugLevel, logFilepath, 1024, 3)
+	log := New(&Options{
+		LogFile: logFilepath,
+	})
 	log.Info("test log")
 
 	makeFakeTime(time.Hour * 24)
