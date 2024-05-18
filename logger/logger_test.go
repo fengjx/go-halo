@@ -93,5 +93,12 @@ func TestRotate(t *testing.T) {
 	log.Info("test log3")
 	log.Info("test log4")
 	log.Flush()
+}
 
+func TestThin(t *testing.T) {
+	log := New(&Options{
+		Thin:    true,
+		LogFile: "./logs/thin.log",
+	})
+	log.Info("", zap.String("foo", "bar"))
 }
