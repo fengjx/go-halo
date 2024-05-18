@@ -21,6 +21,10 @@ const (
 // 参考 lumberjack 可以替换这个实现来做一些 go test，例如按日期分割日志
 var currentTime = time.Now
 
+type (
+	TimeEncoder = zapcore.TimeEncoder
+)
+
 type Logger interface {
 	With(fields ...zap.Field) Logger
 
@@ -40,47 +44,82 @@ type Logger interface {
 	Panicf(format string, args ...interface{})
 	Fatalf(format string, args ...interface{})
 
+	// Flush 日志刷盘
 	Flush()
 
+	// SetLevel 运行时修改日志级别
 	SetLevel(level Level)
 }
 
 type logger struct {
-	level Level
-	log   *zap.Logger
+	atomicLevel zap.AtomicLevel
+	log         *zap.Logger
+}
+
+// Options 日志配置
+type Options struct {
+	Level       Level       // 默认: InfoLevel
+	LogFile     string      // 默认: ${home}/logs/${app}
+	MaxSizeMB   int         // 默认: 12*1024, 2GB
+	MaxBackups  int         // 默认：0，不限制
+	MaxDays     int         // 默认: 7
+	TimeEncoder TimeEncoder // 默认: zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
+}
+
+func defaultOptions(opt *Options) {
+	appName := filepath.Base(os.Args[0])
+	if opt.LogFile == "" {
+		homeDir, err := os.Hostname()
+		if err != nil {
+			panic(err)
+		}
+		opt.LogFile = filepath.Join(homeDir, "logs", appName)
+	}
+	if opt.MaxSizeMB == 0 {
+		// 2GB
+		opt.MaxSizeMB = 2 * 1024
+	}
+	if opt.MaxDays == 0 {
+		opt.MaxDays = 15
+	}
+	if opt.TimeEncoder == nil {
+		opt.TimeEncoder = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
+	}
 }
 
 // New 创建 Logger
 // maxSizeMB 如果不希望按日志大小切割，则传 0
-func New(logLevel Level, logFile string, maxSizeMB int, maxDays int, opts ...zap.Option) Logger {
+func New(opt *Options, opts ...zap.Option) Logger {
+	if opt == nil {
+		opt = &Options{}
+	}
+	defaultOptions(opt)
+
 	jl := &lumberjack.Logger{
-		Filename:  logFile,
-		MaxSize:   maxSizeMB,
-		MaxAge:    maxDays,
-		LocalTime: true,
+		Filename:   opt.LogFile,
+		MaxSize:    opt.MaxSizeMB,
+		MaxBackups: opt.MaxBackups,
+		MaxAge:     opt.MaxDays,
+		LocalTime:  true,
 	}
 	rw := &rotateWriter{
 		Logger: jl,
 	}
-	fstat, err := os.Stat(logFile)
+	fstat, err := os.Stat(opt.LogFile)
 	if err == nil && fstat.Size() > 0 {
 		// 记录文件最后修改位置
 		rw.date = fstat.ModTime().Format(backupDayFormat)
 	}
 	w := zapcore.AddSync(rw)
-	encoderConfig := zap.NewProductionEncoderConfig()
-	encoderConfig.TimeKey = "time"
-	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
-	encoderConfig.FunctionKey = "fn"
-	encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
-
+	encoderConfig := newAppLogEncoderConfig()
+	atomicLevel := zap.NewAtomicLevelAt(opt.Level)
 	core := zapcore.NewCore(
 		zapcore.NewJSONEncoder(encoderConfig),
 		w,
-		zap.NewAtomicLevelAt(zapcore.Level(logLevel)),
+		atomicLevel,
 	)
 	l := zap.New(core, zap.AddCaller())
-	return newWithZap(l, opts...)
+	return newWithZap(l, atomicLevel, opts...)
 }
 
 func NewConsole(opts ...zap.Option) Logger {
@@ -90,32 +129,42 @@ func NewConsole(opts ...zap.Option) Logger {
 	encoderConfig.FunctionKey = "fn"
 	encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
 
+	atomicLevel := zap.NewAtomicLevelAt(zapcore.DebugLevel)
 	config := zap.NewDevelopmentConfig()
 	config.EncoderConfig = encoderConfig
 	config.OutputPaths = []string{"stdout"}
-	config.Level.SetLevel(zapcore.DebugLevel)
+	config.Level = atomicLevel
 
 	l, _ := config.Build()
-	return newWithZap(l, opts...)
+	return newWithZap(l, atomicLevel, opts...)
 }
 
-func newWithZap(l *zap.Logger, opts ...zap.Option) Logger {
+func newWithZap(l *zap.Logger, atomicLevel zap.AtomicLevel, opts ...zap.Option) Logger {
 	options := []zap.Option{
 		zap.AddStacktrace(zap.PanicLevel),
 	}
 	options = append(options, opts...)
 	l = l.WithOptions(options...)
 	return &logger{
-		level: Level(l.Level()),
-		log:   l,
+		atomicLevel: atomicLevel,
+		log:         l,
 	}
+}
+
+func newAppLogEncoderConfig() zapcore.EncoderConfig {
+	encoderConfig := zap.NewProductionEncoderConfig()
+	encoderConfig.TimeKey = "time"
+	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
+	encoderConfig.FunctionKey = "fn"
+	encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
+	return encoderConfig
 }
 
 func (l *logger) With(fields ...zap.Field) Logger {
 	if len(fields) > 0 {
 		return &logger{
-			level: l.level,
-			log:   l.log.With(fields...),
+			atomicLevel: l.atomicLevel,
+			log:         l.log.With(fields...),
 		}
 	}
 	return l
@@ -220,7 +269,7 @@ func (l *logger) Fatalf(format string, args ...interface{}) {
 }
 
 func (l *logger) SetLevel(level Level) {
-	l.level = level
+	l.atomicLevel.SetLevel(level)
 }
 
 func (l *logger) Flush() {
@@ -231,28 +280,28 @@ func (l *logger) Flush() {
 }
 
 func (l *logger) checkLevel(lv Level) bool {
-	return Level(l.log.Level()) <= lv
+	return l.atomicLevel.Level() <= lv
 }
 
-type Level zapcore.Level
+type Level = zapcore.Level
 
 var (
-	DebugLevel = Level(zapcore.DebugLevel)
+	DebugLevel = zapcore.DebugLevel
 	// InfoLevel is the default logging priority.
-	InfoLevel = Level(zapcore.InfoLevel)
+	InfoLevel = zapcore.InfoLevel
 	// WarnLevel logs are more important than Info, but don't need individual
 	// human review.
-	WarnLevel = Level(zapcore.WarnLevel)
+	WarnLevel = zapcore.WarnLevel
 	// ErrorLevel logs are high-priority. If an application is running smoothly,
 	// it shouldn't generate any error-level logs.
-	ErrorLevel = Level(zapcore.ErrorLevel)
+	ErrorLevel = zapcore.ErrorLevel
 	// DPanicLevel logs are particularly important errors. In development the
 	// logger panics after writing the message.
-	DPanicLevel = Level(zapcore.DPanicLevel)
+	DPanicLevel = zapcore.DPanicLevel
 	// PanicLevel logs a message, then panics.
-	PanicLevel = Level(zapcore.PanicLevel)
+	PanicLevel = zapcore.PanicLevel
 	// FatalLevel logs a message, then calls os.Exit(1).
-	FatalLevel = Level(zapcore.FatalLevel)
+	FatalLevel = zapcore.FatalLevel
 )
 
 func GetLogLevel(logLevel string) Level {
