@@ -64,6 +64,7 @@ type Options struct {
 	MaxBackups  int         // 默认：0，不限制
 	MaxDays     int         // 默认: 7
 	TimeEncoder TimeEncoder // 默认: zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
+	Thin        bool        // 是否只打印时间和传入内容，不包括其他额外字段，默认：否
 }
 
 func defaultOptions(opt *Options) {
@@ -88,7 +89,6 @@ func defaultOptions(opt *Options) {
 }
 
 // New 创建 Logger
-// maxSizeMB 如果不希望按日志大小切割，则传 0
 func New(opt *Options, opts ...zap.Option) Logger {
 	if opt == nil {
 		opt = &Options{}
@@ -111,14 +111,19 @@ func New(opt *Options, opts ...zap.Option) Logger {
 		rw.date = fstat.ModTime().Format(backupDayFormat)
 	}
 	w := zapcore.AddSync(rw)
-	encoderConfig := newAppLogEncoderConfig()
+	var encoderConfig zapcore.EncoderConfig
+	if opt.Thin {
+		encoderConfig = newThinEncoderConfig()
+	} else {
+		encoderConfig = newLogEncoderConfig()
+	}
 	atomicLevel := zap.NewAtomicLevelAt(opt.Level)
 	core := zapcore.NewCore(
 		zapcore.NewJSONEncoder(encoderConfig),
 		w,
 		atomicLevel,
 	)
-	l := zap.New(core, zap.AddCaller())
+	l := zap.New(core)
 	return newWithZap(l, atomicLevel, opts...)
 }
 
@@ -151,12 +156,26 @@ func newWithZap(l *zap.Logger, atomicLevel zap.AtomicLevel, opts ...zap.Option) 
 	}
 }
 
-func newAppLogEncoderConfig() zapcore.EncoderConfig {
+func newLogEncoderConfig() zapcore.EncoderConfig {
 	encoderConfig := zap.NewProductionEncoderConfig()
 	encoderConfig.TimeKey = "time"
 	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
 	encoderConfig.FunctionKey = "fn"
 	encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
+	return encoderConfig
+}
+
+// newThinEncoderConfig 只打印时间和传入数据
+func newThinEncoderConfig() zapcore.EncoderConfig {
+	encoderConfig := zap.NewProductionEncoderConfig()
+	encoderConfig.TimeKey = "time"
+	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
+	encoderConfig.FunctionKey = ""
+	encoderConfig.LevelKey = ""
+	encoderConfig.EncodeLevel = nil
+	encoderConfig.MessageKey = ""
+	encoderConfig.NameKey = ""
+	encoderConfig.CallerKey = ""
 	return encoderConfig
 }
 
