@@ -1,13 +1,13 @@
-package fs_test
+package fskit_test
 
 import (
 	"testing"
 
-	"github.com/fengjx/go-halo/fs"
+	"github.com/fengjx/go-halo/fskit"
 )
 
 func TestLookup(t *testing.T) {
-	absPath, err := fs.Lookup("fs/file.go", 3)
+	absPath, err := fskit.Lookup("fs/file.go", 3)
 	if err != nil {
 		t.Fatal(err)
 	}

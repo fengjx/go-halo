@@ -1,4 +1,4 @@
-package logger_test
+package logger
 
 import (
 	"fmt"
@@ -9,11 +9,21 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/fengjx/go-halo/halo"
-	"github.com/fengjx/go-halo/logger"
 )
 
+var fakeCurrentTime = time.Now()
+
+func fakeTime() time.Time {
+	return fakeCurrentTime
+}
+
+// makeFakeTime 日期便宜
+func makeFakeTime(d time.Duration) {
+	fakeCurrentTime = fakeCurrentTime.Add(d)
+}
+
 func TestLogLevel(t *testing.T) {
-	log := logger.NewConsole()
+	log := NewConsole()
 	log.Debug("debug msg")
 	log.Info("info msg")
 	log.Warn("warn msg")
@@ -21,7 +31,7 @@ func TestLogLevel(t *testing.T) {
 }
 
 func TestConsole(t *testing.T) {
-	log := logger.NewConsole()
+	log := NewConsole()
 	wg := &sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
@@ -39,8 +49,12 @@ func TestConsole(t *testing.T) {
 }
 
 func TestFile(t *testing.T) {
-	log1 := logger.New(logger.DebugLevel, "./logs/1.log", 100, 3)
-	log2 := logger.New(logger.DebugLevel, "./logs/2.log", 100, 3)
+	log1 := New(&Options{
+		LogFile: "./logs/1.log",
+	})
+	log2 := New(&Options{
+		LogFile: "./logs/2.log",
+	})
 	wg := &sync.WaitGroup{}
 	count := 1000
 	wg.Add(count)
@@ -56,10 +70,35 @@ func TestFile(t *testing.T) {
 }
 
 func TestWith(t *testing.T) {
-	log := logger.NewConsole()
+	log := NewConsole()
 	log.Info("before with")
 	log = log.With(zap.Int64("goid", halo.GetGoID()))
 	log.Info("after with goid")
 	log = log.With(zap.String("uid", "1000"))
 	log.Info("after with uid")
+}
+
+func TestRotate(t *testing.T) {
+	currentTime = fakeTime
+
+	logFilepath := "./logs/rotate1.log"
+	log := New(&Options{
+		LogFile: logFilepath,
+	})
+	log.Info("test log")
+
+	makeFakeTime(time.Hour * 24)
+
+	log.Info("test log2")
+	log.Info("test log3")
+	log.Info("test log4")
+	log.Flush()
+}
+
+func TestThin(t *testing.T) {
+	log := New(&Options{
+		Thin:    true,
+		LogFile: "./logs/thin.log",
+	})
+	log.Info("", zap.String("foo", "bar"))
 }
