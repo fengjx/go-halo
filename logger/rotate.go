@@ -1,10 +1,13 @@
 package logger
 
 import (
+	"sync"
+
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 type rotateWriter struct {
+	sync.Mutex
 	*lumberjack.Logger
 	date string
 }
@@ -13,8 +16,18 @@ type rotateWriter struct {
 func (r *rotateWriter) Write(p []byte) (n int, err error) {
 	d := currentTime().Format(backupDayFormat)
 	if r.date != "" && r.date != d {
-		_ = r.Logger.Rotate()
+		r.rotate(d)
 	}
-	r.date = d
 	return r.Logger.Write(p)
+}
+
+func (r *rotateWriter) rotate(date string) {
+	r.Lock()
+	defer r.Unlock()
+	// double check
+	if r.date == date {
+		return
+	}
+	r.date = date
+	_ = r.Logger.Rotate()
 }
