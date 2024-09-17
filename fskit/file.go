@@ -19,3 +19,15 @@ func Lookup(filename string, tier int) (path string, err error) {
 	}
 	return "", os.ErrNotExist
 }
+
+// FileExists 判断文件是否存在
+func FileExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}

@@ -133,6 +133,7 @@ func NewConsole(opts ...zap.Option) Logger {
 	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
 	encoderConfig.FunctionKey = "fn"
 	encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
+	encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 
 	atomicLevel := zap.NewAtomicLevelAt(zapcore.DebugLevel)
 	config := zap.NewDevelopmentConfig()
