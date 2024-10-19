@@ -2,7 +2,7 @@ package errs
 
 import "log"
 
-var h = defaultRecoverHandle
+var h RecoverHandle
 
 type RecoverHandle func(any, *Stack)
 
