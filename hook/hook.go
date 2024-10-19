@@ -3,31 +3,14 @@ package hook
 import (
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/samber/lo"
-
-	"github.com/fengjx/go-halo/halo"
 )
-
-type Options struct {
-	interval time.Duration
-}
-
-type Option func(*Options)
-
-// WithInterval 定时执行
-func WithInterval(interval time.Duration) Option {
-	return func(opts *Options) {
-		opts.interval = interval
-	}
-}
 
 // order 越小优先级越高
 type hookFun struct {
-	handler  func()
-	order    int
-	interval time.Duration
+	handler func()
+	order   int
 }
 
 var hookMap map[string][]hookFun
@@ -38,17 +21,12 @@ func init() {
 }
 
 // AddHook 注册回调
-func AddHook(name string, order int, handler func(), opts ...Option) {
+func AddHook(name string, order int, handler func()) {
 	hookMapLock.Lock()
 	defer hookMapLock.Unlock()
-	opt := &Options{}
-	for _, item := range opts {
-		item(opt)
-	}
 	hookMap[name] = append(hookMap[name], hookFun{
-		handler:  handler,
-		order:    order,
-		interval: opt.interval,
+		handler: handler,
+		order:   order,
 	})
 }
 
@@ -82,15 +60,6 @@ func execHooks(hooks []hookFun, wg *sync.WaitGroup) {
 		go func() {
 			defer wg.Done()
 			f.handler()
-			if f.interval > 0 {
-				go func() {
-					defer halo.Recover()
-					tk := time.NewTicker(f.interval)
-					for range tk.C {
-						f.handler()
-					}
-				}()
-			}
 		}()
 	}
 }
