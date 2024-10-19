@@ -1,0 +1,1 @@
+this pkg is from https://github.com/fengjx/go-halo/errs
