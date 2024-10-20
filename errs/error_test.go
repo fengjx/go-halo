@@ -1,8 +1,10 @@
 package errs
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"reflect"
 	"testing"
 
@@ -83,5 +85,36 @@ func TestWithMessage(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("WithMessage(%v, %q): got: %q, want %q", tt.err, tt.message, got, tt.want)
 		}
+	}
+}
+
+func f1() error {
+	log.Println("f1")
+	return errors.New("f1 err")
+}
+
+func f2() error {
+	log.Println("f2")
+	err := f1()
+	if err != nil {
+		return WithStack(err)
+	}
+	return nil
+}
+
+func f3() error {
+	log.Println("f3")
+	err := f2()
+	if err != nil {
+		return WithStack(err)
+	}
+	return nil
+}
+
+func TestStack(t *testing.T) {
+	err := f3()
+	if err != nil {
+		t.Logf("%+v", err)
+		logger.NewConsole().Errorf("err log: %+v", err)
 	}
 }
