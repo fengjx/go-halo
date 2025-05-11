@@ -5,67 +5,22 @@ import (
 	"io"
 )
 
-// New 根据 msg 创建一个 error，同时记录调用栈
-func New(msg string) error {
-	return &fundamental{
-		msg:   msg,
-		Stack: callers(),
-	}
-}
-
-// Errorf 根据 format 创建一个 error，同时记录调用栈
-func Errorf(format string, args ...interface{}) error {
-	return &fundamental{
-		msg:   fmt.Sprintf(format, args...),
-		Stack: callers(),
-	}
-}
-
-// fundamental 记录 err msg 和调用栈
-type fundamental struct {
-	msg string
-	*Stack
-}
-
-func (f *fundamental) Error() string { return f.msg }
-
-func (f *fundamental) Format(s fmt.State, verb rune) {
-	switch verb {
-	case 'v':
-		if s.Flag('+') {
-			io.WriteString(s, f.msg)
-			f.Stack.Format(s, verb)
-			return
-		}
-		fallthrough
-	case 's':
-		io.WriteString(s, f.msg)
-	case 'q':
-		fmt.Fprintf(s, "%q", f.msg)
-	}
-}
-
-// WithStack annotates err with a stack trace at the point WithStack was called.
-// If err is nil, WithStack returns nil.
-func WithStack(err error) error {
-	if err == nil {
-		return nil
-	}
-	return &withStack{
-		err,
-		callers(),
-	}
-}
-
+// withStack 错误包装结构体,支持携带堆栈信息，
+// 只包装根因异常即可，因为堆栈信息只需要携带一次
 type withStack struct {
 	error
 	*Stack
 }
 
-func (w *withStack) Cause() error { return w.error }
+// Cause 返回错误根因
+func (w *withStack) Cause() error {
+	return w.error
+}
 
-// Unwrap provides compatibility for Go 1.13 error chains.
-func (w *withStack) Unwrap() error { return w.error }
+// Unwrap 适配 Go 1.13 标准库接口
+func (w *withStack) Unwrap() error {
+	return w.error
+}
 
 func (w *withStack) Format(s fmt.State, verb rune) {
 	switch verb {
@@ -83,16 +38,10 @@ func (w *withStack) Format(s fmt.State, verb rune) {
 	}
 }
 
-// Wrap returns an error annotating err with a stack trace
-// at the point Wrap is called, and the supplied message.
-// If err is nil, Wrap returns nil.
-func Wrap(err error, message string) error {
+// WithStack 给错误添加堆栈信息
+func WithStack(err error) error {
 	if err == nil {
 		return nil
-	}
-	err = &withMessage{
-		cause: err,
-		msg:   message,
 	}
 	return &withStack{
 		err,
@@ -100,69 +49,29 @@ func Wrap(err error, message string) error {
 	}
 }
 
-// Wrapf returns an error annotating err with a stack trace
-// at the point Wrapf is called, and the format specifier.
-// If err is nil, Wrapf returns nil.
-func Wrapf(err error, format string, args ...interface{}) error {
+// Wrap 包装错误信息，并且保存堆栈信息
+func Wrap(err error, msg string) error {
 	if err == nil {
 		return nil
 	}
-	err = &withMessage{
-		cause: err,
-		msg:   fmt.Sprintf(format, args...),
-	}
+	// %w 可以自动生成一个可以 Unwrap 的 error
+	err = fmt.Errorf("%s: %w", msg, err)
 	return &withStack{
 		err,
 		callers(),
 	}
 }
 
-// WithMessage annotates err with a new message.
-// If err is nil, WithMessage returns nil.
-func WithMessage(err error, message string) error {
+// Wrapf 包装错误信息，并且保存堆栈信息，错误信息支持格式化
+func Wrapf(err error, format string, args ...any) error {
 	if err == nil {
 		return nil
 	}
-	return &withMessage{
-		cause: err,
-		msg:   message,
-	}
-}
-
-// WithMessagef annotates err with the format specifier.
-// If err is nil, WithMessagef returns nil.
-func WithMessagef(err error, format string, args ...interface{}) error {
-	if err == nil {
-		return nil
-	}
-	return &withMessage{
-		cause: err,
-		msg:   fmt.Sprintf(format, args...),
-	}
-}
-
-type withMessage struct {
-	cause error
-	msg   string
-}
-
-func (w *withMessage) Error() string { return w.msg + ": " + w.cause.Error() }
-func (w *withMessage) Cause() error  { return w.cause }
-
-// Unwrap provides compatibility for Go 1.13 error chains.
-func (w *withMessage) Unwrap() error { return w.cause }
-
-func (w *withMessage) Format(s fmt.State, verb rune) {
-	switch verb {
-	case 'v':
-		if s.Flag('+') {
-			fmt.Fprintf(s, "%+v\n", w.Cause())
-			io.WriteString(s, w.msg)
-			return
-		}
-		fallthrough
-	case 's', 'q':
-		io.WriteString(s, w.Error())
+	// %w 可以自动生成一个可以 Unwrap 的 error
+	err = fmt.Errorf("%s: %w", fmt.Sprintf(format, args...), err)
+	return &withStack{
+		err,
+		callers(),
 	}
 }
 
@@ -184,5 +93,5 @@ func Cause(err error) error {
 }
 
 func callers() *Stack {
-	return Callers(3, cMaxStackDepth)
+	return Callers(4, cMaxStackDepth)
 }

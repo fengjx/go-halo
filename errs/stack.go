@@ -13,7 +13,7 @@ import (
 const cMaxStackDepth = 16 // 默认获取调用栈的深度
 
 var (
-	mFramCache sync.Map // uintptr->*Frame
+	frameCache sync.Map // uintptr->*Frame
 )
 
 type Frame struct {
@@ -142,7 +142,7 @@ func funcname(name string) string {
 
 // getFrame 根据pc解析调用信息
 func getFrame(pc uintptr) *Frame {
-	if fr, ok := mFramCache.Load(pc); ok {
+	if fr, ok := frameCache.Load(pc); ok {
 		return fr.(*Frame)
 	}
 
@@ -150,18 +150,16 @@ func getFrame(pc uintptr) *Frame {
 	if nil != frs {
 		fr, _ := frs.Next()
 		frame := buildFrame(fr)
-		mFramCache.Store(pc, frame)
+		frameCache.Store(pc, frame)
 		return frame
 	}
-	mFramCache.Store(pc, nil)
+	frameCache.Store(pc, nil)
 	return nil
 }
 
 func buildFrame(fr runtime.Frame) *Frame {
 	frame := &Frame{Frame: fr, File: fr.File, Function: fr.Function, FuncName: funcname(fr.Function)}
 
-	// 目前函数名是带module路径的，文件名是带绝对路径的，这里先尝试把文件名的前缀部分去掉。
-	// 比如函数名是gitit.cc/xxxx 文件名是 /x/y/z/gitit.cc/xxxx，则尝试查找文件名里面匹配函数名第一部分的地方，然后截断
 	if idx := strings.IndexByte(frame.Function, '/'); idx > 0 {
 		if idx = strings.Index(frame.File, frame.Function[:idx]); idx > 0 {
 			frame.File = frame.File[idx:]
