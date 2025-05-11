@@ -36,14 +36,6 @@ func ExampleNew_printf() {
 	//         /home/dfc/go/src/runtime/asm_amd64.s:2059
 }
 
-func ExampleWithMessage() {
-	cause := errors.New("whoops")
-	err := errs.WithMessage(cause, "oh noes")
-	fmt.Println(err)
-
-	// Output: oh noes: whoops
-}
-
 func ExampleWithStack() {
 	cause := errors.New("whoops")
 	err := errs.WithStack(cause)

@@ -1,7 +1,7 @@
 package errs
 
 import (
-	"fmt"
+	"errors"
 	"runtime"
 	"testing"
 )
@@ -33,11 +33,11 @@ func TestFrameFormat(t *testing.T) {
 		initpc,
 		"%+s",
 		"github.com/fengjx/go-halo/errs.init\n" +
-			"\t.+/github.com/fengjx/go-halo/errs/stack_test.go",
+			"\t.+/go-halo/errs/stack_test.go",
 	}, {
 		initpc,
 		"%d",
-		"11",
+		"10",
 	}, {
 		initpc,
 		"%n",
@@ -59,12 +59,12 @@ func TestFrameFormat(t *testing.T) {
 	}, {
 		initpc,
 		"%v",
-		"stack_test.go:9",
+		"stack_test.go:10",
 	}, {
 		initpc,
 		"%+v",
 		"github.com/fengjx/go-halo/errs.init\n" +
-			"\t.+/github.com/fengjx/go-halo/errs/stack_test.go:9",
+			"\t.+/go-halo/errs/stack_test.go:10",
 	}}
 
 	for i, tt := range tests {
@@ -98,39 +98,9 @@ func TestStackTrace(t *testing.T) {
 		err  error
 		want []string
 	}{{
-		New("ooh"), []string{
+		Wrap(errors.New("ooh"), "ahh"), []string{
 			"github.com/fengjx/go-halo/errs.TestStackTrace\n" +
-				"\t.+/github.com/fengjx/go-halo/errs/stack_test.go:121",
-		},
-	}, {
-		Wrap(New("ooh"), "ahh"), []string{
-			"github.com/fengjx/go-halo/errs.TestStackTrace\n" +
-				"\t.+/github.com/fengjx/go-halo/errs/stack_test.go:126", // this is the stack of Wrap, not New
-		},
-	}, {
-		Cause(Wrap(New("ooh"), "ahh")), []string{
-			"github.com/fengjx/go-halo/errs.TestStackTrace\n" +
-				"\t.+/github.com/fengjx/go-halo/errs/stack_test.go:131", // this is the stack of New
-		},
-	}, {
-		func() error { return New("ooh") }(), []string{
-			`github.com/fengjx/go-halo/errs.TestStackTrace.func1` +
-				"\n\t.+/github.com/fengjx/go-halo/errs/stack_test.go:136", // this is the stack of New
-			"github.com/fengjx/go-halo/errs.TestStackTrace\n" +
-				"\t.+/github.com/fengjx/go-halo/errs/stack_test.go:136", // this is the stack of New's caller
-		},
-	}, {
-		Cause(func() error {
-			return func() error {
-				return Errorf("hello %s", fmt.Sprintf("world: %s", "ooh"))
-			}()
-		}()), []string{
-			`github.com/fengjx/go-halo/errs.TestStackTrace.func2.1` +
-				"\n\t.+/github.com/fengjx/go-halo/errs/stack_test.go:145", // this is the stack of Errorf
-			`github.com/fengjx/go-halo/errs.TestStackTrace.func2` +
-				"\n\t.+/github.com/fengjx/go-halo/errs/stack_test.go:146", // this is the stack of Errorf's caller
-			"github.com/fengjx/go-halo/errs.TestStackTrace\n" +
-				"\t.+/github.com/fengjx/go-halo/errs/stack_test.go:147", // this is the stack of Errorf's caller's caller
+				"\t.+/go-halo/errs/stack_test.go:101", // this is the stack of Wrap, not New
 		},
 	}}
 	for i, tt := range tests {

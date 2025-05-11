@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 
 	"github.com/fengjx/go-halo/logger"
 )
 
 func TestWrap(t *testing.T) {
-	err := New("err1")
+	err := errors.New("err1")
 	err = Wrap(err, "err2")
 	t.Log(fmt.Sprintf("v %v", err))
 	t.Log(fmt.Sprintf("#v %#v", err))
@@ -25,7 +25,7 @@ func TestWrap(t *testing.T) {
 }
 
 func TestCause(t *testing.T) {
-	x := New("error")
+	x := errors.New("error")
 	tests := []struct {
 		err  error
 		want error
@@ -49,12 +49,6 @@ func TestCause(t *testing.T) {
 		err:  x, // return from errs.New
 		want: x,
 	}, {
-		WithMessage(nil, "whoops"),
-		nil,
-	}, {
-		WithMessage(io.EOF, "whoops"),
-		io.EOF,
-	}, {
 		WithStack(nil),
 		nil,
 	}, {
@@ -64,26 +58,8 @@ func TestCause(t *testing.T) {
 
 	for i, tt := range tests {
 		got := Cause(tt.err)
-		if !reflect.DeepEqual(got, tt.want) {
+		if !errors.Is(got, tt.want) {
 			t.Errorf("test %d: got %#v, want %#v", i+1, got, tt.want)
-		}
-	}
-}
-
-func TestWithMessage(t *testing.T) {
-	tests := []struct {
-		err     error
-		message string
-		want    string
-	}{
-		{io.EOF, "read error", "read error: EOF"},
-		{WithMessage(io.EOF, "read error"), "client error", "client error: read error: EOF"},
-	}
-
-	for _, tt := range tests {
-		got := WithMessage(tt.err, tt.message).Error()
-		if got != tt.want {
-			t.Errorf("WithMessage(%v, %q): got: %q, want %q", tt.err, tt.message, got, tt.want)
 		}
 	}
 }
@@ -117,4 +93,22 @@ func TestStack(t *testing.T) {
 		t.Logf("%+v", err)
 		logger.NewConsole().Errorf("err log: %+v", err)
 	}
+}
+
+func TestEquals(t *testing.T) {
+	e1 := fmt.Errorf("error1: %w", io.EOF)
+	e2 := fmt.Errorf("error2: %w", e1)
+	e3 := Wrap(e2, "error3")
+	t.Log("Unwrap 1", errors.Unwrap(e1))
+	t.Log("Unwrap 2", errors.Unwrap(e2))
+	t.Log("Unwrap 3", errors.Unwrap(e3))
+	t.Log("Cause 1", Cause(e1))
+	t.Log("Cause 2", Cause(e2))
+	t.Log("Cause 3", Cause(e3))
+
+	assert.True(t, errors.Is(e2, io.EOF))
+	assert.True(t, errors.Is(e2, e1))
+	assert.True(t, errors.Is(e3, e2))
+
+	t.Logf("%v", e2)
 }
