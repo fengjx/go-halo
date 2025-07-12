@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+- go module path: github.com/fengjx/go-halo
