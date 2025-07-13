@@ -35,9 +35,10 @@ func TestConvert_Basic(t *testing.T) {
 		Name: "Tom",
 		Addr: &AddrEntity{City: "Beijing"},
 	}
-	dto, err := Convert[*UserEntity, *UserDTO](entity)
-	if err != nil {
-		t.Fatalf("转换失败: %v", err)
+	result := Convert[*UserEntity, *UserDTO](entity)
+	dto := result.Val()
+	if result.Error() != nil {
+		t.Fatalf("转换失败: %v", result.Error())
 	}
 	printJSON(t, "dto", dto)
 	if dto.ID != entity.ID || dto.Name != entity.Name || dto.Addr == nil || dto.Addr.City != entity.Addr.City {
@@ -60,11 +61,11 @@ func TestConvert_WithTagName(t *testing.T) {
 		Name: "Jerry",
 		Addr: &AddrEntity{City: "Shanghai"},
 	}
-	dto, err := Convert[UserEntity, UserDTODB](entity, WithTag("db"))
-	if err != nil {
-		t.Fatalf("tagName转换失败: %v", err)
+	result := Convert[UserEntity, UserDTODB](entity, WithTag("db"))
+	dto := result.Val()
+	if result.Error() != nil {
+		t.Fatalf("tagName转换失败: %v", result.Error())
 	}
-	printJSON(t, "dto", dto)
 	if dto.ID != entity.ID || dto.Name != entity.Name || dto.Addr == nil || dto.Addr.City != entity.Addr.City {
 		t.Errorf("tagName字段未正确拷贝: %+v", dto)
 	}
@@ -72,9 +73,10 @@ func TestConvert_WithTagName(t *testing.T) {
 
 func TestConvert_NilPointer(t *testing.T) {
 	var entity *UserEntity = nil
-	dto, err := Convert[*UserEntity, UserDTO](entity)
-	if err != nil {
-		t.Fatalf("nil指针转换失败: %v", err)
+	result := Convert[*UserEntity, UserDTO](entity)
+	dto := result.Val()
+	if result.Error() != nil {
+		t.Fatalf("nil指针转换失败: %v", result.Error())
 	}
 	if !reflect.ValueOf(dto).IsZero() {
 		t.Errorf("nil输入应返回零值: %+v", dto)
@@ -86,9 +88,10 @@ func TestConvert_CustomConverter(t *testing.T) {
 		return UserDTO{ID: 100, Name: "custom"}, nil
 	})
 	entity := UserEntity{ID: 1, Name: "Tom"}
-	dto, err := Convert[UserEntity, UserDTO](entity)
-	if err != nil {
-		t.Fatalf("自定义转换器失败: %v", err)
+	result := Convert[UserEntity, UserDTO](entity)
+	dto := result.Val()
+	if result.Error() != nil {
+		t.Fatalf("自定义转换器失败: %v", result.Error())
 	}
 	if dto.ID != 100 || dto.Name != "custom" {
 		t.Errorf("自定义转换器未生效: %+v", dto)
@@ -114,9 +117,10 @@ func TestConvert_AliasType(t *testing.T) {
 		A: 123,
 		B: "hello",
 	}
-	dto, err := Convert[AliasEntity, AliasDTO](entity)
-	if err != nil {
-		t.Fatalf("alias type 转换失败: %v", err)
+	result := Convert[AliasEntity, AliasDTO](entity)
+	dto := result.Val()
+	if result.Error() != nil {
+		t.Fatalf("alias type 转换失败: %v", result.Error())
 	}
 	if dto.A != int(entity.A) || dto.B != string(entity.B) {
 		t.Errorf("alias type 字段未正确拷贝: %+v", dto)
@@ -130,9 +134,9 @@ func BenchmarkConvert_Struct(b *testing.B) {
 		Addr: &AddrEntity{City: "Beijing"},
 	}
 	for i := 0; i < b.N; i++ {
-		_, err := Convert[UserEntity, UserDTO](entity)
-		if err != nil {
-			b.Fatal(err)
+		result := Convert[UserEntity, UserDTO](entity)
+		if result.Error() != nil {
+			b.Fatal(result.Error())
 		}
 	}
 }
@@ -144,9 +148,9 @@ func BenchmarkConvert_Ptr(b *testing.B) {
 		Addr: &AddrEntity{City: "Beijing"},
 	}
 	for i := 0; i < b.N; i++ {
-		_, err := Convert[*UserEntity, UserDTO](entity)
-		if err != nil {
-			b.Fatal(err)
+		result := Convert[*UserEntity, UserDTO](entity)
+		if result.Error() != nil {
+			b.Fatal(result.Error())
 		}
 	}
 }
@@ -154,7 +158,7 @@ func BenchmarkConvert_Ptr(b *testing.B) {
 // 打印结果辅助
 func ExampleConvert() {
 	entity := UserEntity{ID: 1, Name: "Tom", Addr: &AddrEntity{City: "Beijing"}}
-	dto, _ := Convert[UserEntity, UserDTO](entity)
+	dto := Convert[UserEntity, UserDTO](entity).Val()
 	fmt.Println(dto.ID, dto.Name, dto.Addr.City)
 	// Output: 1 Tom Beijing
 }
