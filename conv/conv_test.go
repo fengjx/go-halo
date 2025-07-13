@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 )
 
 // 测试结构体定义
@@ -27,6 +28,27 @@ type UserDTO struct {
 
 type AddrDTO struct {
 	City string `json:"city"`
+}
+
+// 用于测试 time.Time <-> int64 互转
+type TimeEntity struct {
+	T1 int64
+	T2 int64
+}
+
+type TimeDTO struct {
+	T1 time.Time
+	T2 time.Time
+}
+
+type TimeEntity2 struct {
+	T1 time.Time
+	T2 time.Time
+}
+
+type TimeDTO2 struct {
+	T1 int64
+	T2 int64
 }
 
 func TestConvert_Basic(t *testing.T) {
@@ -124,6 +146,78 @@ func TestConvert_AliasType(t *testing.T) {
 	}
 	if dto.A != int(entity.A) || dto.B != string(entity.B) {
 		t.Errorf("alias type 字段未正确拷贝: %+v", dto)
+	}
+}
+
+func TestConvert_TimeInt64_S_Default(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	entity := TimeEntity{
+		T1: now.Unix(),
+		T2: now.Add(time.Hour).Unix(),
+	}
+	dto := Convert[TimeEntity, TimeDTO](entity).Val()
+	if !dto.T1.Equal(now) || !dto.T2.Equal(now.Add(time.Hour)) {
+		t.Errorf("time.Time <- int64(s, default) 转换失败: %+v", dto)
+	}
+	// 反向
+	entity2 := TimeEntity2{T1: now, T2: now.Add(time.Hour)}
+	dto2 := Convert[TimeEntity2, TimeDTO2](entity2).Val()
+	if dto2.T1 != now.Unix() || dto2.T2 != now.Add(time.Hour).Unix() {
+		t.Errorf("int64(s, default) <- time.Time 转换失败: %+v", dto2)
+	}
+}
+
+func TestConvert_TimeInt64_S(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	entity := TimeEntity{
+		T1: now.Unix(),
+		T2: now.Add(time.Hour).Unix(),
+	}
+	dto := Convert[TimeEntity, TimeDTO](entity, WithTimeUnit(time.Second)).Val()
+	if !dto.T1.Equal(now) || !dto.T2.Equal(now.Add(time.Hour)) {
+		t.Errorf("time.Time <- int64(s) 转换失败: %+v", dto)
+	}
+	// 反向
+	entity2 := TimeEntity2{T1: now, T2: now.Add(time.Hour)}
+	dto2 := Convert[TimeEntity2, TimeDTO2](entity2, WithTimeUnit(time.Second)).Val()
+	if dto2.T1 != now.Unix() || dto2.T2 != now.Add(time.Hour).Unix() {
+		t.Errorf("int64(s) <- time.Time 转换失败: %+v", dto2)
+	}
+}
+
+func TestConvert_TimeInt64_NS(t *testing.T) {
+	now := time.Now().Truncate(time.Nanosecond)
+	entity := TimeEntity{
+		T1: now.UnixNano(),
+		T2: now.Add(time.Hour).UnixNano(),
+	}
+	dto := Convert[TimeEntity, TimeDTO](entity, WithTimeUnit(time.Nanosecond)).Val()
+	if !dto.T1.Equal(now) || !dto.T2.Equal(now.Add(time.Hour)) {
+		t.Errorf("time.Time <- int64(ns) 转换失败: %+v", dto)
+	}
+	// 反向
+	entity2 := TimeEntity2{T1: now, T2: now.Add(time.Hour)}
+	dto2 := Convert[TimeEntity2, TimeDTO2](entity2, WithTimeUnit(time.Nanosecond)).Val()
+	if dto2.T1 != now.UnixNano() || dto2.T2 != now.Add(time.Hour).UnixNano() {
+		t.Errorf("int64(ns) <- time.Time 转换失败: %+v", dto2)
+	}
+}
+
+func TestConvert_TimeInt64_US(t *testing.T) {
+	now := time.Now().Truncate(time.Microsecond)
+	entity := TimeEntity{
+		T1: now.UnixMicro(),
+		T2: now.Add(time.Hour).UnixMicro(),
+	}
+	dto := Convert[TimeEntity, TimeDTO](entity, WithTimeUnit(time.Microsecond)).Val()
+	if !dto.T1.Equal(now) || !dto.T2.Equal(now.Add(time.Hour)) {
+		t.Errorf("time.Time <- int64(us) 转换失败: %+v", dto)
+	}
+	// 反向
+	entity2 := TimeEntity2{T1: now, T2: now.Add(time.Hour)}
+	dto2 := Convert[TimeEntity2, TimeDTO2](entity2, WithTimeUnit(time.Microsecond)).Val()
+	if dto2.T1 != now.UnixMicro() || dto2.T2 != now.Add(time.Hour).UnixMicro() {
+		t.Errorf("int64(us) <- time.Time 转换失败: %+v", dto2)
 	}
 }
 
