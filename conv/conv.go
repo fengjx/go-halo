@@ -117,7 +117,10 @@ func Convert[SRC, DIST any](from SRC, opts ...Option) Result[SRC, DIST] {
 	if isNil(any(from)) {
 		return Result[SRC, DIST]{value: zero, err: nil}
 	}
-	opt := options{timeUnit: "s"}
+	opt := options{
+		tagName:  "json",
+		timeUnit: "s",
+	}
 	for _, o := range opts {
 		o(&opt)
 	}
