@@ -79,6 +79,11 @@ func (r Result[SRC, DIST]) Then(f func(DIST)) Result[SRC, DIST] {
 	return r
 }
 
+// Result 展开 Result 对象
+func (r Result[SRC, DIST]) Result() (DIST, error) {
+	return r.value, r.err
+}
+
 // Convert 执行类型转换，支持 Option
 // from 为源对象，返回 Result 对象，支持链式调用
 // 可通过 Option 自定义 tagName 等行为
