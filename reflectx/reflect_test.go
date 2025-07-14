@@ -848,7 +848,7 @@ func TestMustBe(t *testing.T) {
 				t.Errorf("unexpected Method: %s", valueErr.Method)
 				t.Fatal("expected panic with *reflect.ValueError")
 			}
-			if valueErr.Method != "github.com/jmoiron/sqlx/reflectx.TestMustBe" {
+			if valueErr.Method != "github.com/fengjx/go-halo/reflectx.TestMustBe" {
 				t.Fatalf("unexpected Method: %s", valueErr.Method)
 			}
 			if valueErr.Kind != reflect.String {

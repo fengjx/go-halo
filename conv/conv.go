@@ -1,10 +1,8 @@
 package conv
 
 import (
-	"fmt"
 	"reflect"
 	"sync"
-
 	"time"
 
 	"github.com/fengjx/go-halo/reflectx"
@@ -18,7 +16,7 @@ type Converter[SRC, DIST any] func(src SRC) (DIST, error)
 
 var (
 	mu       sync.RWMutex
-	registry = make(map[string]any)
+	registry = make(map[tKey]any)
 
 	// mapperCache 用于缓存不同 tagName 的 reflectx.Mapper
 	mapperCache sync.Map // map[string]*reflectx.Mapper
@@ -26,8 +24,15 @@ var (
 
 // Register 注册自定义类型转换器
 // fn 为自定义的转换实现，注册后优先于默认转换器被调用
-func Register[SRC, DIST any](fn Converter[SRC, DIST]) {
-	key := typeKey[SRC, DIST]("")
+func Register[SRC, DIST any](fn Converter[SRC, DIST], opts ...Option) {
+	opt := options{
+		tagName:  "json",
+		timeUnit: "s",
+	}
+	for _, o := range opts {
+		o(&opt)
+	}
+	key := typeKey[SRC, DIST](opt.tagName)
 	mu.Lock()
 	defer mu.Unlock()
 	registry[key] = fn
@@ -185,10 +190,7 @@ func copyStructRecursiveWithOpt(dst, src any, opt options) {
 		}
 
 		// time.Time <-> int64 互转
-		if isTimeInt64Convert(dstFieldVal, srcFieldVal) {
-			if err := setTimeInt64(dstFieldVal, srcFieldVal, opt.timeUnit); err != nil {
-				continue
-			}
+		if setTimeInt64(dstFieldVal, srcFieldVal, opt.timeUnit) {
 			continue
 		}
 
@@ -221,7 +223,10 @@ func isTimeInt64Convert(dst, src reflect.Value) bool {
 }
 
 // 设置 time.Time <-> int64 互转
-func setTimeInt64(dst, src reflect.Value, unit string) error {
+func setTimeInt64(dst, src reflect.Value, unit string) bool {
+	if !isTimeInt64Convert(dst, src) {
+		return false
+	}
 	if dst.Type() == timeType && src.Type() == int64Type {
 		// int64 -> time.Time
 		ts := src.Interface().(int64)
@@ -239,7 +244,6 @@ func setTimeInt64(dst, src reflect.Value, unit string) error {
 			t = time.Unix(ts, 0)
 		}
 		dst.Set(reflect.ValueOf(t))
-		return nil
 	}
 	if dst.Type() == int64Type && src.Type() == timeType {
 		// time.Time -> int64
@@ -258,9 +262,8 @@ func setTimeInt64(dst, src reflect.Value, unit string) error {
 			ts = t.Unix()
 		}
 		dst.Set(reflect.ValueOf(ts))
-		return nil
 	}
-	return fmt.Errorf("not time-int64 convert")
+	return true
 }
 
 // getCachedMapper 获取或创建指定 tagName 的 reflectx.Mapper
@@ -274,12 +277,21 @@ func getCachedMapper(tagName string) *reflectx.Mapper {
 	return mapper
 }
 
+type tKey struct {
+	src reflect.Type
+	dst reflect.Type
+	tag string
+}
+
 // typeKey 生成类型唯一 key，用于注册表索引
-func typeKey[SRC, DIST any](tagName string) string {
-	if tagName == "" {
-		return fmt.Sprintf("%T->%T:%s", *new(SRC), *new(DIST), tagName)
+func typeKey[SRC, DIST any](tagName string) tKey {
+	var s SRC
+	var d DIST
+	return tKey{
+		src: reflect.TypeOf(s),
+		dst: reflect.TypeOf(d),
+		tag: tagName,
 	}
-	return fmt.Sprintf("%T->%T", *new(SRC), *new(DIST))
 }
 
 // isNil 判断接口值是否为 nil（支持指针、interface、slice、map、chan、func）

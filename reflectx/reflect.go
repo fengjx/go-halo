@@ -64,7 +64,7 @@ type Mapper struct {
 	tagName    string
 	tagMapFunc func(string) string
 	mapFunc    func(string) string
-	mutex      sync.Mutex
+	mutex      sync.RWMutex
 }
 
 // NewMapper returns a new mapper using the tagName as its struct field tag.
@@ -102,8 +102,16 @@ func NewMapperFunc(tagName string, f func(string) string) *Mapper {
 // TypeMap returns a mapping of field strings to int slices representing
 // the traversal down the struct to reach the field.
 func (m *Mapper) TypeMap(t reflect.Type) *StructMap {
-	m.mutex.Lock()
+	// 使用读锁先检查 cache
+	m.mutex.RLock()
 	mapping, ok := m.cache[t]
+	m.mutex.RUnlock()
+	if ok {
+		return mapping
+	}
+	// 未命中时加写锁，再次 double check
+	m.mutex.Lock()
+	mapping, ok = m.cache[t]
 	if !ok {
 		mapping = getMapping(t, m.tagName, m.mapFunc, m.tagMapFunc)
 		m.cache[t] = mapping

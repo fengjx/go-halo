@@ -11,23 +11,61 @@ import (
 // 测试结构体定义
 
 type UserEntity struct {
-	ID   int         `json:"id" db:"id"`
-	Name string      `json:"name" db:"name"`
-	Addr *AddrEntity `json:"addr" db:"addr"`
+	ID        int               `json:"id" db:"id"`
+	Name      string            `json:"name" db:"name"`
+	Addr      *AddrEntity       `json:"addr" db:"addr"`
+	Age       int               `json:"age" db:"age"`
+	Score     float64           `json:"score" db:"score"`
+	Active    bool              `json:"active" db:"active"`
+	Tags      []string          `json:"tags" db:"tags"`
+	Attrs     map[string]string `json:"attrs" db:"attrs"`
+	CreatedAt time.Time         `json:"created_at" db:"created_at"`
+	UpdatedAt *time.Time        `json:"updated_at" db:"updated_at"`
+	Any       interface{}       `json:"any" db:"any"`
+	Alias     MyInt             `json:"alias" db:"alias"`
+	Numbers   []int             `json:"numbers" db:"numbers"`
+	Data      []byte            `json:"data" db:"data"`
+	Nested    NestedEntity      `json:"nested" db:"nested"`
 }
 
 type AddrEntity struct {
-	City string `json:"city" db:"city"`
+	City     string     `json:"city" db:"city"`
+	PostCode int        `json:"post_code" db:"post_code"`
+	Location [2]float64 `json:"location" db:"location"`
 }
 
 type UserDTO struct {
-	ID   int      `json:"id"`
-	Name string   `json:"name"`
-	Addr *AddrDTO `json:"addr"`
+	ID        int               `json:"id"`
+	Name      string            `json:"name"`
+	Addr      *AddrDTO          `json:"addr"`
+	Age       int               `json:"age"`
+	Score     float64           `json:"score"`
+	Active    bool              `json:"active"`
+	Tags      []string          `json:"tags"`
+	Attrs     map[string]string `json:"attrs"`
+	CreatedAt time.Time         `json:"created_at"`
+	UpdatedAt *time.Time        `json:"updated_at"`
+	Any       interface{}       `json:"any"`
+	Alias     int               `json:"alias"`
+	Numbers   []int             `json:"numbers"`
+	Data      []byte            `json:"data"`
+	Nested    NestedDTO         `json:"nested"`
 }
 
 type AddrDTO struct {
-	City string `json:"city"`
+	City     string     `json:"city"`
+	PostCode int        `json:"post_code"`
+	Location [2]float64 `json:"location"`
+}
+
+type NestedEntity struct {
+	Desc string
+	Val  int
+}
+
+type NestedDTO struct {
+	Desc string
+	Val  int
 }
 
 // 用于测试 time.Time <-> int64 互转
@@ -52,10 +90,24 @@ type TimeDTO2 struct {
 }
 
 func TestConvert_Basic(t *testing.T) {
+	now := time.Now()
+	nowPtr := &now
 	entity := &UserEntity{
-		ID:   1,
-		Name: "Tom",
-		Addr: &AddrEntity{City: "Beijing"},
+		ID:        1,
+		Name:      "Tom",
+		Addr:      &AddrEntity{City: "Beijing", PostCode: 100000, Location: [2]float64{39.9042, 116.4074}},
+		Age:       30,
+		Score:     99.5,
+		Active:    true,
+		Tags:      []string{"golang", "dev"},
+		Attrs:     map[string]string{"role": "admin", "team": "backend"},
+		CreatedAt: now,
+		UpdatedAt: nowPtr,
+		Any:       map[string]any{"k": 1},
+		Alias:     42,
+		Numbers:   []int{1, 2, 3},
+		Data:      []byte("hello world"),
+		Nested:    NestedEntity{Desc: "嵌套结构体", Val: 888},
 	}
 	result := Convert[*UserEntity, *UserDTO](entity)
 	dto := result.Val()
@@ -65,6 +117,45 @@ func TestConvert_Basic(t *testing.T) {
 	printJSON(t, "dto", dto)
 	if dto.ID != entity.ID || dto.Name != entity.Name || dto.Addr == nil || dto.Addr.City != entity.Addr.City {
 		t.Errorf("字段未正确拷贝: %+v", dto)
+	}
+	if dto.Age != entity.Age {
+		t.Errorf("Age 字段未正确拷贝")
+	}
+	if dto.Score != entity.Score {
+		t.Errorf("Score 字段未正确拷贝")
+	}
+	if dto.Active != entity.Active {
+		t.Errorf("Active 字段未正确拷贝")
+	}
+	if len(dto.Tags) != len(entity.Tags) || dto.Tags[0] != entity.Tags[0] {
+		t.Errorf("Tags 字段未正确拷贝")
+	}
+	if len(dto.Attrs) != len(entity.Attrs) || dto.Attrs["role"] != entity.Attrs["role"] {
+		t.Errorf("Attrs 字段未正确拷贝")
+	}
+	if !dto.CreatedAt.Equal(entity.CreatedAt) {
+		t.Errorf("CreatedAt 字段未正确拷贝")
+	}
+	if dto.UpdatedAt == nil || !dto.UpdatedAt.Equal(*entity.UpdatedAt) {
+		t.Errorf("UpdatedAt 字段未正确拷贝")
+	}
+	if dto.Alias != int(entity.Alias) {
+		t.Errorf("Alias 字段未正确拷贝")
+	}
+	if len(dto.Numbers) != len(entity.Numbers) || dto.Numbers[1] != entity.Numbers[1] {
+		t.Errorf("Numbers 字段未正确拷贝")
+	}
+	if string(dto.Data) != string(entity.Data) {
+		t.Errorf("Data 字段未正确拷贝")
+	}
+	if dto.Nested.Desc != entity.Nested.Desc || dto.Nested.Val != entity.Nested.Val {
+		t.Errorf("Nested 字段未正确拷贝")
+	}
+	if dto.Addr.PostCode != entity.Addr.PostCode {
+		t.Errorf("Addr.PostCode 字段未正确拷贝")
+	}
+	if dto.Addr.Location != entity.Addr.Location {
+		t.Errorf("Addr.Location 字段未正确拷贝")
 	}
 }
 
@@ -106,16 +197,22 @@ func TestConvert_NilPointer(t *testing.T) {
 }
 
 func TestConvert_CustomConverter(t *testing.T) {
-	Register[UserEntity, UserDTO](func(src UserEntity) (UserDTO, error) {
-		return UserDTO{ID: 100, Name: "custom"}, nil
+	type MyEntity struct {
+		Foo int
+	}
+	type MyDTO struct {
+		Bar int
+	}
+	Register(func(src MyEntity) (MyDTO, error) {
+		return MyDTO{Bar: 100}, nil
 	})
-	entity := UserEntity{ID: 1, Name: "Tom"}
-	result := Convert[UserEntity, UserDTO](entity)
+	entity := MyEntity{Foo: 1}
+	result := Convert[MyEntity, MyDTO](entity)
 	dto := result.Val()
 	if result.Error() != nil {
 		t.Fatalf("自定义转换器失败: %v", result.Error())
 	}
-	if dto.ID != 100 || dto.Name != "custom" {
+	if dto.Bar != 100 {
 		t.Errorf("自定义转换器未生效: %+v", dto)
 	}
 }
@@ -221,6 +318,71 @@ func TestConvert_TimeInt64_US(t *testing.T) {
 	}
 }
 
+func BenchmarkConvert_New(b *testing.B) {
+	now := time.Now()
+	nowPtr := &now
+	entity := UserEntity{
+		ID:        1,
+		Name:      "Tom",
+		Addr:      &AddrEntity{City: "Beijing", PostCode: 100000, Location: [2]float64{39.9042, 116.4074}},
+		Age:       30,
+		Score:     99.5,
+		Active:    true,
+		Tags:      []string{"golang", "dev"},
+		Attrs:     map[string]string{"role": "admin", "team": "backend"},
+		CreatedAt: now,
+		UpdatedAt: nowPtr,
+		Any:       map[string]any{"k": 1},
+		Alias:     42,
+		Numbers:   []int{1, 2, 3},
+		Data:      []byte("hello world"),
+		Nested:    NestedEntity{Desc: "嵌套结构体", Val: 888},
+	}
+	for i := 0; i < b.N; i++ {
+		dto := &UserDTO{
+			ID:   entity.ID,
+			Name: entity.Name,
+			Addr: &AddrDTO{
+				City:     entity.Addr.City,
+				PostCode: entity.Addr.PostCode,
+				Location: entity.Addr.Location,
+			},
+			Age:       entity.Age,
+			Score:     entity.Score,
+			Active:    entity.Active,
+			Tags:      entity.Tags,
+			Attrs:     entity.Attrs,
+			CreatedAt: entity.CreatedAt,
+			UpdatedAt: entity.UpdatedAt,
+			Any:       entity.Any,
+			Alias:     int(entity.Alias),
+			Numbers:   entity.Numbers,
+			Data:      entity.Data,
+			Nested:    NestedDTO{Desc: entity.Nested.Desc, Val: entity.Nested.Val},
+		}
+		_ = dto
+	}
+}
+
+func BenchmarkConvert_JSON(b *testing.B) {
+	entity := UserEntity{
+		ID:   1,
+		Name: "Tom",
+		Addr: &AddrEntity{City: "Beijing"},
+	}
+	for i := 0; i < b.N; i++ {
+		data, err := json.Marshal(entity)
+		if err != nil {
+			b.Fatal(err)
+		}
+		var dto UserDTO
+		if err := json.Unmarshal(data, &dto); err != nil {
+			b.Fatal(err)
+		}
+		_ = dto
+	}
+}
+
 func BenchmarkConvert_Struct(b *testing.B) {
 	entity := UserEntity{
 		ID:   1,
@@ -246,6 +408,26 @@ func BenchmarkConvert_Ptr(b *testing.B) {
 		if result.Error() != nil {
 			b.Fatal(result.Error())
 		}
+	}
+}
+
+func BenchmarkConvert_CustomConverter(b *testing.B) {
+	type MyEntity struct {
+		Foo int
+	}
+	type MyDTO struct {
+		Bar int
+	}
+	Register(func(src MyEntity) (MyDTO, error) {
+		return MyDTO{Bar: src.Foo + 1}, nil
+	})
+	entity := MyEntity{Foo: 123}
+	for i := 0; i < b.N; i++ {
+		result := Convert[MyEntity, MyDTO](entity)
+		if result.Error() != nil {
+			b.Fatal(result.Error())
+		}
+		_ = result.Val()
 	}
 }
 
