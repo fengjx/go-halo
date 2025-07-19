@@ -8,6 +8,4 @@ alwaysApply: false
 编写一个 entity dto 之间转换的 工具类
 
 - 默认转换方法的实现要求处理性能较高，不要每次都是用反射执行，可以使用 reflectx 工具包，是从 sqlx 拿过来的，代码在 /reflectx 目录
-- 支持泛型
-- 支持链式调用
 
