@@ -82,24 +82,24 @@ func Convert(src, dst any, opts ...Option) error {
 		return nil
 	}
 
-	opt := &options{
+	opt := options{
 		tagName:  "json",
 		timeUnit: "s",
 	}
 	for _, o := range opts {
-		o(opt)
+		o(&opt)
 	}
 
 	srcType := reflect.TypeOf(src)
 	dstType := reflect.TypeOf(dst)
 
 	fn := getConverter(srcType, dstType, opt)
-	return fn(src, dst)
+	return fn(src, dst, opt)
 }
 
-type converter func(src, dst any) error
+type converter func(src, dst any, opt options) error
 
-func getConverter(srcType, dstType reflect.Type, opt *options) converter {
+func getConverter(srcType, dstType reflect.Type, opt options) converter {
 	// 获取实际的类型（去除指针）
 	srcType, _ = indirectType(srcType)
 	dstType, _ = indirectType(dstType)
@@ -130,7 +130,7 @@ func getConverter(srcType, dstType reflect.Type, opt *options) converter {
 }
 
 // genConverter 支持递归结构体赋值
-func genConverter(srcType, dstType reflect.Type, opt *options) converter {
+func genConverter(srcType, dstType reflect.Type, opt options) converter {
 	mapper := getCachedMapper(opt.tagName)
 	dstFields := mapper.TypeMap(dstType)
 	srcFields := mapper.TypeMap(srcType)
@@ -171,14 +171,14 @@ func genConverter(srcType, dstType reflect.Type, opt *options) converter {
 		// 递归处理结构体
 		if srcFieldType.Kind() == reflect.Struct && dstFieldType.Kind() == reflect.Struct {
 			subConv := genConverter(srcFieldType, dstFieldType, opt)
-			setValueFuncMap[name] = func(dst, src reflect.Value, opt *options) {
-				_ = subConv(src.Addr().Interface(), dst.Addr().Interface())
+			setValueFuncMap[name] = func(dst, src reflect.Value, opt options) {
+				_ = subConv(src.Addr().Interface(), dst.Addr().Interface(), opt)
 			}
 			continue
 		}
 	}
 
-	return func(from any, to any) error {
+	return func(from any, to any, opt options) error {
 		// 处理源值
 		fromVal := reflect.ValueOf(from)
 		if fromVal.Kind() == reflect.Ptr {
@@ -200,34 +200,36 @@ func genConverter(srcType, dstType reflect.Type, opt *options) converter {
 
 		// 字段赋值
 		for name, fn := range setValueFuncMap {
-			srcFieldVal := reflectx.FieldByIndexes(fromVal, srcFields.Names[name].Index)
-			dstFieldVal := reflectx.FieldByIndexes(toVal, dstFields.Names[name].Index)
-
-			if !srcFieldVal.IsValid() || !dstFieldVal.CanSet() {
+			srcFieldVal := reflectx.FieldByIndexesReadOnly(fromVal, srcFields.Names[name].Index)
+			if !srcFieldVal.IsValid() {
 				continue
 			}
 
+			dstFieldVal := reflectx.FieldByIndexes(toVal, dstFields.Names[name].Index)
+			if !dstFieldVal.CanSet() {
+				continue
+			}
 			fn(dstFieldVal, srcFieldVal, opt)
 		}
 		return nil
 	}
 }
 
-func notSupportConvert(src, dst any) error {
+func notSupportConvert(src, dst any, opt options) error {
 	return ErrNotSupportType
 }
 
-type setValueFunc func(dst, src reflect.Value, opt *options)
+type setValueFunc func(dst, src reflect.Value, opt options)
 
-var setAssignableTo = func(dst, src reflect.Value, opt *options) {
+var setAssignableTo = func(dst, src reflect.Value, opt options) {
 	dst.Set(src)
 }
 
-var setConvertibleTo = func(dst, src reflect.Value, opt *options) {
+var setConvertibleTo = func(dst, src reflect.Value, opt options) {
 	dst.Set(src.Convert(dst.Type()))
 }
 
-var setTimeToInt64 = func(dst, src reflect.Value, opt *options) {
+var setTimeToInt64 = func(dst, src reflect.Value, opt options) {
 	switch opt.timeUnit {
 	case Nanosecond:
 		dst.Set(reflect.ValueOf(src.Interface().(time.Time).UnixNano()))
@@ -242,7 +244,7 @@ var setTimeToInt64 = func(dst, src reflect.Value, opt *options) {
 	}
 }
 
-var setInt64ToTime = func(dst, src reflect.Value, opt *options) {
+var setInt64ToTime = func(dst, src reflect.Value, opt options) {
 	switch opt.timeUnit {
 	case Nanosecond:
 		dst.Set(reflect.ValueOf(time.Unix(0, src.Interface().(int64))))
