@@ -11,23 +11,59 @@ import (
 // 测试结构体定义
 
 type UserEntity struct {
-	ID   int         `json:"id" db:"id"`
-	Name string      `json:"name" db:"name"`
-	Addr *AddrEntity `json:"addr" db:"addr"`
+	ID        int               `json:"id" db:"id"`
+	Name      string            `json:"name" db:"name"`
+	Addr      *AddrEntity       `json:"addr" db:"addr"`
+	Age       int               `json:"age" db:"age"`
+	Score     float64           `json:"score" db:"score"`
+	Active    bool              `json:"active" db:"active"`
+	Tags      []string          `json:"tags" db:"tags"`
+	Attrs     map[string]string `json:"attrs" db:"attrs"`
+	CreatedAt time.Time         `json:"created_at" db:"created_at"`
+	Any       interface{}       `json:"any" db:"any"`
+	Alias     MyInt             `json:"alias" db:"alias"`
+	Numbers   []int             `json:"numbers" db:"numbers"`
+	Data      []byte            `json:"data" db:"data"`
+	Nested    NestedEntity      `json:"nested" db:"nested"`
 }
 
 type AddrEntity struct {
-	City string `json:"city" db:"city"`
+	City     string     `json:"city" db:"city"`
+	PostCode int        `json:"post_code" db:"post_code"`
+	Location [2]float64 `json:"location" db:"location"`
 }
 
 type UserDTO struct {
-	ID   int      `json:"id"`
-	Name string   `json:"name"`
-	Addr *AddrDTO `json:"addr"`
+	ID        int               `json:"id"`
+	Name      string            `json:"name"`
+	Addr      *AddrDTO          `json:"addr"`
+	Age       int               `json:"age"`
+	Score     float64           `json:"score"`
+	Active    bool              `json:"active"`
+	Tags      []string          `json:"tags"`
+	Attrs     map[string]string `json:"attrs"`
+	CreatedAt time.Time         `json:"created_at"`
+	Any       interface{}       `json:"any"`
+	Alias     int               `json:"alias"`
+	Numbers   []int             `json:"numbers"`
+	Data      []byte            `json:"data"`
+	Nested    NestedDTO         `json:"nested"`
 }
 
 type AddrDTO struct {
-	City string `json:"city"`
+	City     string     `json:"city"`
+	PostCode int        `json:"post_code"`
+	Location [2]float64 `json:"location"`
+}
+
+type NestedEntity struct {
+	Desc string
+	Val  int
+}
+
+type NestedDTO struct {
+	Desc string
+	Val  int
 }
 
 // 用于测试 time.Time <-> int64 互转
@@ -52,19 +88,69 @@ type TimeDTO2 struct {
 }
 
 func TestConvert_Basic(t *testing.T) {
+	now := time.Now()
 	entity := &UserEntity{
-		ID:   1,
-		Name: "Tom",
-		Addr: &AddrEntity{City: "Beijing"},
+		ID:        1,
+		Name:      "Tom",
+		Addr:      &AddrEntity{City: "Beijing", PostCode: 100000, Location: [2]float64{39.9042, 116.4074}},
+		Age:       30,
+		Score:     99.5,
+		Active:    true,
+		Tags:      []string{"golang", "dev"},
+		Attrs:     map[string]string{"role": "admin", "team": "backend"},
+		CreatedAt: now,
+		Any:       map[string]any{"k": 1},
+		Alias:     42,
+		Numbers:   []int{1, 2, 3},
+		Data:      []byte("hello world"),
+		Nested:    NestedEntity{Desc: "嵌套结构体", Val: 888},
 	}
-	result := Convert[*UserEntity, *UserDTO](entity)
-	dto := result.Val()
-	if result.Error() != nil {
-		t.Fatalf("转换失败: %v", result.Error())
+
+	var dto UserDTO
+	err := Convert(entity, &dto)
+	if err != nil {
+		t.Fatalf("转换失败: %v", err)
 	}
+
 	printJSON(t, "dto", dto)
 	if dto.ID != entity.ID || dto.Name != entity.Name || dto.Addr == nil || dto.Addr.City != entity.Addr.City {
 		t.Errorf("字段未正确拷贝: %+v", dto)
+	}
+	if dto.Age != entity.Age {
+		t.Errorf("Age 字段未正确拷贝")
+	}
+	if dto.Score != entity.Score {
+		t.Errorf("Score 字段未正确拷贝")
+	}
+	if dto.Active != entity.Active {
+		t.Errorf("Active 字段未正确拷贝")
+	}
+	if len(dto.Tags) != len(entity.Tags) || dto.Tags[0] != entity.Tags[0] {
+		t.Errorf("Tags 字段未正确拷贝")
+	}
+	if len(dto.Attrs) != len(entity.Attrs) || dto.Attrs["role"] != entity.Attrs["role"] {
+		t.Errorf("Attrs 字段未正确拷贝")
+	}
+	if !dto.CreatedAt.Equal(entity.CreatedAt) {
+		t.Errorf("CreatedAt 字段未正确拷贝")
+	}
+	if dto.Alias != int(entity.Alias) {
+		t.Errorf("Alias 字段未正确拷贝")
+	}
+	if len(dto.Numbers) != len(entity.Numbers) || dto.Numbers[1] != entity.Numbers[1] {
+		t.Errorf("Numbers 字段未正确拷贝")
+	}
+	if string(dto.Data) != string(entity.Data) {
+		t.Errorf("Data 字段未正确拷贝")
+	}
+	if dto.Nested.Desc != entity.Nested.Desc || dto.Nested.Val != entity.Nested.Val {
+		t.Errorf("Nested 字段未正确拷贝")
+	}
+	if dto.Addr.PostCode != entity.Addr.PostCode {
+		t.Errorf("Addr.PostCode 字段未正确拷贝")
+	}
+	if dto.Addr.Location != entity.Addr.Location {
+		t.Errorf("Addr.Location 字段未正确拷贝")
 	}
 }
 
@@ -83,10 +169,11 @@ func TestConvert_WithTagName(t *testing.T) {
 		Name: "Jerry",
 		Addr: &AddrEntity{City: "Shanghai"},
 	}
-	result := Convert[UserEntity, UserDTODB](entity, WithTag("db"))
-	dto := result.Val()
-	if result.Error() != nil {
-		t.Fatalf("tagName转换失败: %v", result.Error())
+
+	var dto UserDTODB
+	err := Convert(entity, &dto, WithTag("db"))
+	if err != nil {
+		t.Fatalf("tagName转换失败: %v", err)
 	}
 	if dto.ID != entity.ID || dto.Name != entity.Name || dto.Addr == nil || dto.Addr.City != entity.Addr.City {
 		t.Errorf("tagName字段未正确拷贝: %+v", dto)
@@ -95,28 +182,13 @@ func TestConvert_WithTagName(t *testing.T) {
 
 func TestConvert_NilPointer(t *testing.T) {
 	var entity *UserEntity = nil
-	result := Convert[*UserEntity, UserDTO](entity)
-	dto := result.Val()
-	if result.Error() != nil {
-		t.Fatalf("nil指针转换失败: %v", result.Error())
+	var dto UserDTO
+	err := Convert(entity, &dto)
+	if err != nil {
+		t.Fatalf("nil指针转换失败: %v", err)
 	}
 	if !reflect.ValueOf(dto).IsZero() {
 		t.Errorf("nil输入应返回零值: %+v", dto)
-	}
-}
-
-func TestConvert_CustomConverter(t *testing.T) {
-	Register[UserEntity, UserDTO](func(src UserEntity) (UserDTO, error) {
-		return UserDTO{ID: 100, Name: "custom"}, nil
-	})
-	entity := UserEntity{ID: 1, Name: "Tom"}
-	result := Convert[UserEntity, UserDTO](entity)
-	dto := result.Val()
-	if result.Error() != nil {
-		t.Fatalf("自定义转换器失败: %v", result.Error())
-	}
-	if dto.ID != 100 || dto.Name != "custom" {
-		t.Errorf("自定义转换器未生效: %+v", dto)
 	}
 }
 
@@ -139,10 +211,11 @@ func TestConvert_AliasType(t *testing.T) {
 		A: 123,
 		B: "hello",
 	}
-	result := Convert[AliasEntity, AliasDTO](entity)
-	dto := result.Val()
-	if result.Error() != nil {
-		t.Fatalf("alias type 转换失败: %v", result.Error())
+
+	var dto AliasDTO
+	err := Convert(entity, &dto)
+	if err != nil {
+		t.Fatalf("alias type 转换失败: %v", err)
 	}
 	if dto.A != int(entity.A) || dto.B != string(entity.B) {
 		t.Errorf("alias type 字段未正确拷贝: %+v", dto)
@@ -155,13 +228,23 @@ func TestConvert_TimeInt64_S_Default(t *testing.T) {
 		T1: now.Unix(),
 		T2: now.Add(time.Hour).Unix(),
 	}
-	dto := Convert[TimeEntity, TimeDTO](entity).Val()
+
+	var dto TimeDTO
+	err := Convert(entity, &dto)
+	if err != nil {
+		t.Fatalf("time.Time <- int64(s, default) 转换失败: %v", err)
+	}
 	if !dto.T1.Equal(now) || !dto.T2.Equal(now.Add(time.Hour)) {
 		t.Errorf("time.Time <- int64(s, default) 转换失败: %+v", dto)
 	}
+
 	// 反向
 	entity2 := TimeEntity2{T1: now, T2: now.Add(time.Hour)}
-	dto2 := Convert[TimeEntity2, TimeDTO2](entity2).Val()
+	var dto2 TimeDTO2
+	err = Convert(entity2, &dto2)
+	if err != nil {
+		t.Fatalf("int64(s, default) <- time.Time 转换失败: %v", err)
+	}
 	if dto2.T1 != now.Unix() || dto2.T2 != now.Add(time.Hour).Unix() {
 		t.Errorf("int64(s, default) <- time.Time 转换失败: %+v", dto2)
 	}
@@ -173,13 +256,23 @@ func TestConvert_TimeInt64_S(t *testing.T) {
 		T1: now.Unix(),
 		T2: now.Add(time.Hour).Unix(),
 	}
-	dto := Convert[TimeEntity, TimeDTO](entity, WithTimeUnit(time.Second)).Val()
+
+	var dto TimeDTO
+	err := Convert(entity, &dto, WithTimeUnit(Second))
+	if err != nil {
+		t.Fatalf("time.Time <- int64(s) 转换失败: %v", err)
+	}
 	if !dto.T1.Equal(now) || !dto.T2.Equal(now.Add(time.Hour)) {
 		t.Errorf("time.Time <- int64(s) 转换失败: %+v", dto)
 	}
+
 	// 反向
 	entity2 := TimeEntity2{T1: now, T2: now.Add(time.Hour)}
-	dto2 := Convert[TimeEntity2, TimeDTO2](entity2, WithTimeUnit(time.Second)).Val()
+	var dto2 TimeDTO2
+	err = Convert(entity2, &dto2, WithTimeUnit(Second))
+	if err != nil {
+		t.Fatalf("int64(s) <- time.Time 转换失败: %v", err)
+	}
 	if dto2.T1 != now.Unix() || dto2.T2 != now.Add(time.Hour).Unix() {
 		t.Errorf("int64(s) <- time.Time 转换失败: %+v", dto2)
 	}
@@ -191,13 +284,23 @@ func TestConvert_TimeInt64_NS(t *testing.T) {
 		T1: now.UnixNano(),
 		T2: now.Add(time.Hour).UnixNano(),
 	}
-	dto := Convert[TimeEntity, TimeDTO](entity, WithTimeUnit(time.Nanosecond)).Val()
+
+	var dto TimeDTO
+	err := Convert(entity, &dto, WithTimeUnit(Nanosecond))
+	if err != nil {
+		t.Fatalf("time.Time <- int64(ns) 转换失败: %v", err)
+	}
 	if !dto.T1.Equal(now) || !dto.T2.Equal(now.Add(time.Hour)) {
 		t.Errorf("time.Time <- int64(ns) 转换失败: %+v", dto)
 	}
+
 	// 反向
 	entity2 := TimeEntity2{T1: now, T2: now.Add(time.Hour)}
-	dto2 := Convert[TimeEntity2, TimeDTO2](entity2, WithTimeUnit(time.Nanosecond)).Val()
+	var dto2 TimeDTO2
+	err = Convert(entity2, &dto2, WithTimeUnit(Nanosecond))
+	if err != nil {
+		t.Fatalf("int64(ns) <- time.Time 转换失败: %v", err)
+	}
 	if dto2.T1 != now.UnixNano() || dto2.T2 != now.Add(time.Hour).UnixNano() {
 		t.Errorf("int64(ns) <- time.Time 转换失败: %+v", dto2)
 	}
@@ -209,28 +312,112 @@ func TestConvert_TimeInt64_US(t *testing.T) {
 		T1: now.UnixMicro(),
 		T2: now.Add(time.Hour).UnixMicro(),
 	}
-	dto := Convert[TimeEntity, TimeDTO](entity, WithTimeUnit(time.Microsecond)).Val()
+
+	var dto TimeDTO
+	err := Convert(entity, &dto, WithTimeUnit(Microsecond))
+	if err != nil {
+		t.Fatalf("time.Time <- int64(us) 转换失败: %v", err)
+	}
 	if !dto.T1.Equal(now) || !dto.T2.Equal(now.Add(time.Hour)) {
 		t.Errorf("time.Time <- int64(us) 转换失败: %+v", dto)
 	}
+
 	// 反向
 	entity2 := TimeEntity2{T1: now, T2: now.Add(time.Hour)}
-	dto2 := Convert[TimeEntity2, TimeDTO2](entity2, WithTimeUnit(time.Microsecond)).Val()
+	var dto2 TimeDTO2
+	err = Convert(entity2, &dto2, WithTimeUnit(Microsecond))
+	if err != nil {
+		t.Fatalf("int64(us) <- time.Time 转换失败: %v", err)
+	}
 	if dto2.T1 != now.UnixMicro() || dto2.T2 != now.Add(time.Hour).UnixMicro() {
 		t.Errorf("int64(us) <- time.Time 转换失败: %+v", dto2)
 	}
 }
 
-func BenchmarkConvert_Struct(b *testing.B) {
+func BenchmarkConvert_New(b *testing.B) {
+	now := time.Now()
+	entity := UserEntity{
+		ID:        1,
+		Name:      "Tom",
+		Addr:      &AddrEntity{City: "Beijing", PostCode: 100000, Location: [2]float64{39.9042, 116.4074}},
+		Age:       30,
+		Score:     99.5,
+		Active:    true,
+		Tags:      []string{"golang", "dev"},
+		Attrs:     map[string]string{"role": "admin", "team": "backend"},
+		CreatedAt: now,
+		Any:       map[string]any{"k": 1},
+		Alias:     42,
+		Numbers:   []int{1, 2, 3},
+		Data:      []byte("hello world"),
+		Nested:    NestedEntity{Desc: "嵌套结构体", Val: 888},
+	}
+	for i := 0; i < b.N; i++ {
+		dto := &UserDTO{
+			ID:   entity.ID,
+			Name: entity.Name,
+			Addr: &AddrDTO{
+				City:     entity.Addr.City,
+				PostCode: entity.Addr.PostCode,
+				Location: entity.Addr.Location,
+			},
+			Age:       entity.Age,
+			Score:     entity.Score,
+			Active:    entity.Active,
+			Tags:      entity.Tags,
+			Attrs:     entity.Attrs,
+			CreatedAt: entity.CreatedAt,
+			Any:       entity.Any,
+			Alias:     int(entity.Alias),
+			Numbers:   entity.Numbers,
+			Data:      entity.Data,
+			Nested:    NestedDTO{Desc: entity.Nested.Desc, Val: entity.Nested.Val},
+		}
+		_ = dto
+	}
+}
+
+func BenchmarkConvert_JSON(b *testing.B) {
 	entity := UserEntity{
 		ID:   1,
 		Name: "Tom",
 		Addr: &AddrEntity{City: "Beijing"},
 	}
 	for i := 0; i < b.N; i++ {
-		result := Convert[UserEntity, UserDTO](entity)
-		if result.Error() != nil {
-			b.Fatal(result.Error())
+		data, err := json.Marshal(entity)
+		if err != nil {
+			b.Fatal(err)
+		}
+		var dto UserDTO
+		if err := json.Unmarshal(data, &dto); err != nil {
+			b.Fatal(err)
+		}
+		_ = dto
+	}
+}
+
+func BenchmarkConvert_Struct(b *testing.B) {
+	now := time.Now()
+	entity := UserEntity{
+		ID:        1,
+		Name:      "Tom",
+		Addr:      &AddrEntity{City: "Beijing", PostCode: 100000, Location: [2]float64{39.9042, 116.4074}},
+		Age:       30,
+		Score:     99.5,
+		Active:    true,
+		Tags:      []string{"golang", "dev"},
+		Attrs:     map[string]string{"role": "admin", "team": "backend"},
+		CreatedAt: now,
+		Any:       map[string]any{"k": 1},
+		Alias:     42,
+		Numbers:   []int{1, 2, 3},
+		Data:      []byte("hello world"),
+		Nested:    NestedEntity{Desc: "嵌套结构体", Val: 888},
+	}
+	for i := 0; i < b.N; i++ {
+		var dto UserDTO
+		if err := Convert(entity, &dto); err != nil {
+			b.Fatal(err)
 		}
 	}
 }
@@ -242,9 +429,9 @@ func BenchmarkConvert_Ptr(b *testing.B) {
 		Addr: &AddrEntity{City: "Beijing"},
 	}
 	for i := 0; i < b.N; i++ {
-		result := Convert[*UserEntity, UserDTO](entity)
-		if result.Error() != nil {
-			b.Fatal(result.Error())
+		var dto UserDTO
+		if err := Convert(entity, &dto); err != nil {
+			b.Fatal(err)
 		}
 	}
 }
@@ -252,12 +439,17 @@ func BenchmarkConvert_Ptr(b *testing.B) {
 // 打印结果辅助
 func ExampleConvert() {
 	entity := UserEntity{ID: 1, Name: "Tom", Addr: &AddrEntity{City: "Beijing"}}
-	dto := Convert[UserEntity, UserDTO](entity).Val()
+	var dto UserDTO
+	err := Convert(entity, &dto)
+	if err != nil {
+		fmt.Printf("转换失败: %v", err)
+		return
+	}
 	fmt.Println(dto.ID, dto.Name, dto.Addr.City)
 	// Output: 1 Tom Beijing
 }
 
 func printJSON(t *testing.T, msg string, v any) {
-	json, _ := json.Marshal(v)
-	t.Log(msg, string(json))
+	bys, _ := json.Marshal(v)
+	t.Log(msg, string(bys))
 }
