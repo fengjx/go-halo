@@ -75,48 +75,11 @@ func WithTimeUnit(unit TimeUnit) Option {
 	}
 }
 
-// Result 封装类型转换结果和错误，支持链式调用
-type Result[SRC, DIST any] struct {
-	value DIST
-	err   error
-}
-
-// Val 返回转换结果
-func (r Result[SRC, DIST]) Val() DIST {
-	return r.value
-}
-
-// Error 返回转换错误
-func (r Result[SRC, DIST]) Error() error {
-	return r.err
-}
-
-// OnError 链式处理错误
-func (r Result[SRC, DIST]) OnError(f func(error)) Result[SRC, DIST] {
-	if r.err != nil {
-		f(r.err)
-	}
-	return r
-}
-
-// Then 链式处理成功结果
-func (r Result[SRC, DIST]) Then(f func(DIST)) Result[SRC, DIST] {
-	if r.err == nil {
-		f(r.value)
-	}
-	return r
-}
-
-// Result 展开 Result 对象
-func (r Result[SRC, DIST]) Result() (DIST, error) {
-	return r.value, r.err
-}
-
 // Convert 执行类型转换，支持 Option
-func Convert[SRC, DIST any](from SRC, opts ...Option) Result[SRC, DIST] {
-	var zero DIST
-	if isNil(any(from)) {
-		return Result[SRC, DIST]{value: zero, err: nil}
+// src 为源对象，dst 为目标对象指针，返回 error
+func Convert(src, dst any, opts ...Option) error {
+	if isNil(src) {
+		return nil
 	}
 
 	opt := &options{
@@ -127,15 +90,11 @@ func Convert[SRC, DIST any](from SRC, opts ...Option) Result[SRC, DIST] {
 		o(opt)
 	}
 
-	var s SRC
-	var d DIST
-	srcType := reflect.TypeOf(s)
-	dstType := reflect.TypeOf(d)
+	srcType := reflect.TypeOf(src)
+	dstType := reflect.TypeOf(dst)
 
 	fn := getConverter(srcType, dstType, opt)
-	var to DIST
-	err := fn(from, &to)
-	return Result[SRC, DIST]{value: to, err: err}
+	return fn(src, dst)
 }
 
 type converter func(src, dst any) error
@@ -159,16 +118,14 @@ func getConverter(srcType, dstType reflect.Type, opt *options) converter {
 	}
 
 	mu.Lock()
+	defer mu.Unlock()
 	// double check
 	fn, ok = registry[key]
 	if ok {
-		mu.Unlock()
 		return fn.(converter)
 	}
-
 	fn = genConverter(srcType, dstType, opt)
 	registry[key] = fn
-	mu.Unlock()
 	return fn.(converter)
 }
 
