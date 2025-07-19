@@ -1,6 +1,7 @@
 package conv
 
 import (
+	"errors"
 	"reflect"
 	"sync"
 	"time"
@@ -8,68 +9,67 @@ import (
 	"github.com/fengjx/go-halo/reflectx"
 )
 
-// Converter 泛型类型定义
-// 用于描述从 SRC 类型到 DIST 类型的转换函数签名
-// 参数：src 源对象
-// 返回值：DIST 目标对象，error 错误信息
-type Converter[SRC, DIST any] func(src SRC) (DIST, error)
-
 var (
-	mu       sync.RWMutex
+	mu sync.Mutex
+	// registry converter
 	registry = make(map[tKey]any)
 
 	// mapperCache 用于缓存不同 tagName 的 reflectx.Mapper
 	mapperCache sync.Map // map[string]*reflectx.Mapper
+
+	// 预定义的类型常量
+	intType        = reflect.TypeOf((*int)(nil)).Elem()
+	int8Type       = reflect.TypeOf((*int8)(nil)).Elem()
+	int16Type      = reflect.TypeOf((*int16)(nil)).Elem()
+	int32Type      = reflect.TypeOf((*int32)(nil)).Elem()
+	int64Type      = reflect.TypeOf((*int64)(nil)).Elem()
+	uintType       = reflect.TypeOf((*uint)(nil)).Elem()
+	uint8Type      = reflect.TypeOf((*uint8)(nil)).Elem()
+	uint16Type     = reflect.TypeOf((*uint16)(nil)).Elem()
+	uint32Type     = reflect.TypeOf((*uint32)(nil)).Elem()
+	uint64Type     = reflect.TypeOf((*uint64)(nil)).Elem()
+	float32Type    = reflect.TypeOf((*float32)(nil)).Elem()
+	float64Type    = reflect.TypeOf((*float64)(nil)).Elem()
+	complex64Type  = reflect.TypeOf((*complex64)(nil)).Elem()
+	complex128Type = reflect.TypeOf((*complex128)(nil)).Elem()
+	stringType     = reflect.TypeOf((*string)(nil)).Elem()
+	boolType       = reflect.TypeOf((*bool)(nil)).Elem()
+	byteType       = reflect.TypeOf((*byte)(nil)).Elem()
+	bytesType      = reflect.SliceOf(byteType)
+	timeType       = reflect.TypeOf((*time.Time)(nil)).Elem()
 )
 
-// Register 注册自定义类型转换器
-// fn 为自定义的转换实现，注册后优先于默认转换器被调用
-func Register[SRC, DIST any](fn Converter[SRC, DIST], opts ...Option) {
-	opt := options{
-		tagName:  "json",
-		timeUnit: "s",
-	}
-	for _, o := range opts {
-		o(&opt)
-	}
-	key := typeKey[SRC, DIST](opt.tagName)
-	mu.Lock()
-	defer mu.Unlock()
-	registry[key] = fn
-}
+var (
+	ErrMapKeyNotMatch = errors.New("map key type not match")
+	ErrNotSupportType = errors.New("not support type, src and dst must be struct or ptr to struct")
+)
+
+const (
+	Second      TimeUnit = "s"
+	Millisecond TimeUnit = "ms"
+	Microsecond TimeUnit = "us"
+	Nanosecond  TimeUnit = "ns"
+)
+
+type TimeUnit string
 
 // Option 用于自定义转换行为的函数类型
-// 例如可用于自定义结构体 tag 名称等
 type Option func(*options)
 
 type options struct {
-	tagName  string // 结构体字段映射时使用的 tag 名称
-	timeUnit string // 时间戳单位，ms/us/ns/s，默认ms
+	tagName  string   // 结构体字段映射时使用的 tag 名称
+	timeUnit TimeUnit // 时间戳单位，ms/us/ns/s，默认s
 }
 
 // WithTag 设置结构体 tag 名称（如 "json"、"db" 等）
-// 用于控制字段名映射时采用的 tag
 func WithTag(tag string) Option {
 	return func(o *options) {
 		o.tagName = tag
 	}
 }
 
-// WithTimeUnit 设置时间戳单位（如 time.Millisecond、time.Second 等）
-func WithTimeUnit(d time.Duration) Option {
-	var unit string
-	switch d {
-	case time.Second:
-		unit = "s"
-	case time.Millisecond:
-		unit = "ms"
-	case time.Microsecond:
-		unit = "us"
-	case time.Nanosecond:
-		unit = "ns"
-	default:
-		unit = "s" // 默认秒
-	}
+// WithTimeUnit 设置时间戳单位
+func WithTimeUnit(unit TimeUnit) Option {
 	return func(o *options) {
 		o.timeUnit = unit
 	}
@@ -81,7 +81,7 @@ type Result[SRC, DIST any] struct {
 	err   error
 }
 
-// Value 返回转换结果
+// Val 返回转换结果
 func (r Result[SRC, DIST]) Val() DIST {
 	return r.value
 }
@@ -113,157 +113,191 @@ func (r Result[SRC, DIST]) Result() (DIST, error) {
 }
 
 // Convert 执行类型转换，支持 Option
-// from 为源对象，返回 Result 对象，支持链式调用
-// 可通过 Option 自定义 tagName 等行为
-// 若已注册自定义转换器则优先使用，否则使用默认反射拷贝
-// from 为 nil 时，返回 DIST 的零值
 func Convert[SRC, DIST any](from SRC, opts ...Option) Result[SRC, DIST] {
 	var zero DIST
 	if isNil(any(from)) {
 		return Result[SRC, DIST]{value: zero, err: nil}
 	}
-	opt := options{
+
+	opt := &options{
 		tagName:  "json",
 		timeUnit: "s",
 	}
 	for _, o := range opts {
-		o(&opt)
+		o(opt)
 	}
-	key := typeKey[SRC, DIST](opt.tagName)
-	mu.RLock()
-	fn, ok := registry[key]
-	mu.RUnlock()
-	if ok {
-		v, err := fn.(Converter[SRC, DIST])(from)
-		return Result[SRC, DIST]{value: v, err: err}
-	}
-	v, err := defaultConvertWithOpt[SRC, DIST](from, opt)
-	return Result[SRC, DIST]{value: v, err: err}
-}
 
-// defaultConvertWithOpt 支持 Option 的 defaultConvert
-func defaultConvertWithOpt[SRC, DIST any](from SRC, opt options) (DIST, error) {
+	var s SRC
+	var d DIST
+	srcType := reflect.TypeOf(s)
+	dstType := reflect.TypeOf(d)
+
+	fn := getConverter(srcType, dstType, opt)
 	var to DIST
-	toVal := reflect.ValueOf(&to).Elem()
-	if toVal.Kind() == reflect.Ptr {
-		if toVal.IsNil() {
-			toVal.Set(reflect.New(toVal.Type().Elem()))
-		}
-		copyStructRecursiveWithOpt(to, from, opt)
-		return to, nil
-	} else {
-		copyStructRecursiveWithOpt(&to, from, opt)
-		return to, nil
-	}
+	err := fn(from, &to)
+	return Result[SRC, DIST]{value: to, err: err}
 }
 
-// copyStructRecursiveWithOpt 支持时间戳互转
-func copyStructRecursiveWithOpt(dst, src any, opt options) {
-	dstVal := reflect.ValueOf(dst)
-	if dstVal.Kind() != reflect.Ptr || dstVal.IsNil() {
-		panic("dst must be a non-nil pointer")
+type converter func(src, dst any) error
+
+func getConverter(srcType, dstType reflect.Type, opt *options) converter {
+	// 获取实际的类型（去除指针）
+	srcType, _ = indirectType(srcType)
+	dstType, _ = indirectType(dstType)
+
+	if srcType.Kind() != reflect.Struct {
+		return notSupportConvert
 	}
-	dstVal = dstVal.Elem()
-	srcVal := reflect.ValueOf(src)
-	if srcVal.Kind() == reflect.Ptr && !srcVal.IsNil() {
-		srcVal = srcVal.Elem()
+	if dstType.Kind() != reflect.Struct {
+		return notSupportConvert
 	}
 
-	dstType := dstVal.Type()
-	srcType := srcVal.Type()
+	key := typeKey(srcType, dstType, opt.tagName)
+	fn, ok := registry[key]
+	if ok {
+		return fn.(converter)
+	}
 
-	dstMapper := getCachedMapper(opt.tagName)
-	srcMapper := getCachedMapper(opt.tagName)
-	dstFields := dstMapper.TypeMap(dstType)
-	srcFields := srcMapper.TypeMap(srcType)
+	mu.Lock()
+	// double check
+	fn, ok = registry[key]
+	if ok {
+		mu.Unlock()
+		return fn.(converter)
+	}
+
+	fn = genConverter(srcType, dstType, opt)
+	registry[key] = fn
+	mu.Unlock()
+	return fn.(converter)
+}
+
+// genConverter 支持递归结构体赋值
+func genConverter(srcType, dstType reflect.Type, opt *options) converter {
+	mapper := getCachedMapper(opt.tagName)
+	dstFields := mapper.TypeMap(dstType)
+	srcFields := mapper.TypeMap(srcType)
+
+	setValueFuncMap := make(map[string]setValueFunc)
 
 	for name, dstField := range dstFields.Names {
 		srcField, ok := srcFields.Names[name]
 		if !ok {
 			continue
 		}
-		dstFieldVal := reflectx.FieldByIndexes(dstVal, dstField.Index)
-		srcFieldVal := reflectx.FieldByIndexesReadOnly(srcVal, srcField.Index)
 
-		if !srcFieldVal.IsValid() || !dstFieldVal.CanSet() {
+		srcFieldType := srcField.Field.Type
+		dstFieldType := dstField.Field.Type
+
+		// 直接赋值（类型可赋值）
+		if srcFieldType.AssignableTo(dstFieldType) {
+			setValueFuncMap[name] = setAssignableTo
 			continue
 		}
 
-		// time.Time <-> int64 互转
-		if setTimeInt64(dstFieldVal, srcFieldVal, opt.timeUnit) {
+		if srcFieldType.ConvertibleTo(dstFieldType) {
+			setValueFuncMap[name] = setConvertibleTo
+			continue
+		}
+
+		// 时间戳转换
+		if srcFieldType == int64Type && dstFieldType == timeType {
+			setValueFuncMap[name] = setInt64ToTime
+			continue
+		}
+
+		if srcFieldType == timeType && dstFieldType == int64Type {
+			setValueFuncMap[name] = setTimeToInt64
 			continue
 		}
 
 		// 递归处理结构体
-		if dstFieldVal.Kind() == reflect.Struct && srcFieldVal.Kind() == reflect.Struct {
-			copyStructRecursiveWithOpt(dstFieldVal.Addr().Interface(), srcFieldVal.Interface(), opt)
-			continue
-		}
-		// 指针类型递归
-		if dstFieldVal.Kind() == reflect.Ptr && srcFieldVal.Kind() == reflect.Ptr && !srcFieldVal.IsNil() {
-			if dstFieldVal.IsNil() {
-				dstFieldVal.Set(reflect.New(dstFieldVal.Type().Elem()))
+		if srcFieldType.Kind() == reflect.Struct && dstFieldType.Kind() == reflect.Struct {
+			subConv := genConverter(srcFieldType, dstFieldType, opt)
+			setValueFuncMap[name] = func(dst, src reflect.Value, opt *options) {
+				_ = subConv(src.Addr().Interface(), dst.Addr().Interface())
 			}
-			copyStructRecursiveWithOpt(dstFieldVal.Interface(), srcFieldVal.Interface(), opt)
 			continue
 		}
-		// 直接赋值（类型可赋值）
-		if srcFieldVal.Type().AssignableTo(dstFieldVal.Type()) {
-			dstFieldVal.Set(srcFieldVal)
-		} else if srcFieldVal.Type().ConvertibleTo(dstFieldVal.Type()) {
-			dstFieldVal.Set(srcFieldVal.Convert(dstFieldVal.Type()))
+	}
+
+	return func(from any, to any) error {
+		// 处理源值
+		fromVal := reflect.ValueOf(from)
+		if fromVal.Kind() == reflect.Ptr {
+			if fromVal.IsNil() {
+				return nil
+			}
+			fromVal = fromVal.Elem()
 		}
+
+		// 处理目标值
+		toVal := reflect.ValueOf(to)
+		if toVal.Kind() == reflect.Ptr {
+			if toVal.IsNil() {
+				// 创建新的目标对象
+				toVal.Set(reflect.New(toVal.Type().Elem()))
+			}
+			toVal = toVal.Elem()
+		}
+
+		// 字段赋值
+		for name, fn := range setValueFuncMap {
+			srcFieldVal := reflectx.FieldByIndexes(fromVal, srcFields.Names[name].Index)
+			dstFieldVal := reflectx.FieldByIndexes(toVal, dstFields.Names[name].Index)
+
+			if !srcFieldVal.IsValid() || !dstFieldVal.CanSet() {
+				continue
+			}
+
+			fn(dstFieldVal, srcFieldVal, opt)
+		}
+		return nil
 	}
 }
 
-// 判断是否 time.Time <-> int64 互转
-func isTimeInt64Convert(dst, src reflect.Value) bool {
-	return (dst.Type() == timeType && src.Type() == int64Type) ||
-		(dst.Type() == int64Type && src.Type() == timeType)
+func notSupportConvert(src, dst any) error {
+	return ErrNotSupportType
 }
 
-// 设置 time.Time <-> int64 互转
-func setTimeInt64(dst, src reflect.Value, unit string) bool {
-	if !isTimeInt64Convert(dst, src) {
-		return false
+type setValueFunc func(dst, src reflect.Value, opt *options)
+
+var setAssignableTo = func(dst, src reflect.Value, opt *options) {
+	dst.Set(src)
+}
+
+var setConvertibleTo = func(dst, src reflect.Value, opt *options) {
+	dst.Set(src.Convert(dst.Type()))
+}
+
+var setTimeToInt64 = func(dst, src reflect.Value, opt *options) {
+	switch opt.timeUnit {
+	case Nanosecond:
+		dst.Set(reflect.ValueOf(src.Interface().(time.Time).UnixNano()))
+	case Microsecond:
+		dst.Set(reflect.ValueOf(src.Interface().(time.Time).UnixNano() / 1e3))
+	case Millisecond:
+		dst.Set(reflect.ValueOf(src.Interface().(time.Time).UnixNano() / 1e6))
+	case Second:
+		dst.Set(reflect.ValueOf(src.Interface().(time.Time).Unix()))
+	default:
+		dst.Set(reflect.ValueOf(src.Interface().(time.Time).Unix()))
 	}
-	if dst.Type() == timeType && src.Type() == int64Type {
-		// int64 -> time.Time
-		ts := src.Interface().(int64)
-		var t time.Time
-		switch unit {
-		case "ns":
-			t = time.Unix(0, ts)
-		case "us":
-			t = time.Unix(0, ts*1e3)
-		case "ms":
-			t = time.Unix(0, ts*1e6)
-		case "s", "":
-			t = time.Unix(ts, 0)
-		default:
-			t = time.Unix(ts, 0)
-		}
-		dst.Set(reflect.ValueOf(t))
+}
+
+var setInt64ToTime = func(dst, src reflect.Value, opt *options) {
+	switch opt.timeUnit {
+	case Nanosecond:
+		dst.Set(reflect.ValueOf(time.Unix(0, src.Interface().(int64))))
+	case Microsecond:
+		dst.Set(reflect.ValueOf(time.Unix(0, src.Interface().(int64)*1e3)))
+	case Millisecond:
+		dst.Set(reflect.ValueOf(time.Unix(0, src.Interface().(int64)*1e6)))
+	case Second:
+		dst.Set(reflect.ValueOf(time.Unix(src.Interface().(int64), 0)))
+	default:
+		dst.Set(reflect.ValueOf(time.Unix(src.Interface().(int64), 0)))
 	}
-	if dst.Type() == int64Type && src.Type() == timeType {
-		// time.Time -> int64
-		t := src.Interface().(time.Time)
-		var ts int64
-		switch unit {
-		case "ns":
-			ts = t.UnixNano()
-		case "us":
-			ts = t.UnixNano() / 1e3
-		case "ms":
-			ts = t.UnixNano() / 1e6
-		case "s", "":
-			ts = t.Unix()
-		default:
-			ts = t.Unix()
-		}
-		dst.Set(reflect.ValueOf(ts))
-	}
-	return true
 }
 
 // getCachedMapper 获取或创建指定 tagName 的 reflectx.Mapper
@@ -284,18 +318,15 @@ type tKey struct {
 }
 
 // typeKey 生成类型唯一 key，用于注册表索引
-func typeKey[SRC, DIST any](tagName string) tKey {
-	var s SRC
-	var d DIST
+func typeKey(srcType, dstType reflect.Type, tagName string) tKey {
 	return tKey{
-		src: reflect.TypeOf(s),
-		dst: reflect.TypeOf(d),
+		src: srcType,
+		dst: dstType,
 		tag: tagName,
 	}
 }
 
-// isNil 判断接口值是否为 nil（支持指针、interface、slice、map、chan、func）
-// 用于泛型类型安全判断 nil
+// isNil 判断接口值是否为 nil
 func isNil(i any) bool {
 	if i == nil {
 		return true
@@ -306,4 +337,13 @@ func isNil(i any) bool {
 		return v.IsNil()
 	}
 	return false
+}
+
+// indirectType 获取类型的间接类型和是否为指针
+func indirectType(reflectType reflect.Type) (_ reflect.Type, isPtr bool) {
+	for reflectType.Kind() == reflect.Ptr {
+		reflectType = reflectType.Elem()
+		isPtr = true
+	}
+	return reflectType, isPtr
 }

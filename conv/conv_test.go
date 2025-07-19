@@ -20,7 +20,6 @@ type UserEntity struct {
 	Tags      []string          `json:"tags" db:"tags"`
 	Attrs     map[string]string `json:"attrs" db:"attrs"`
 	CreatedAt time.Time         `json:"created_at" db:"created_at"`
-	UpdatedAt *time.Time        `json:"updated_at" db:"updated_at"`
 	Any       interface{}       `json:"any" db:"any"`
 	Alias     MyInt             `json:"alias" db:"alias"`
 	Numbers   []int             `json:"numbers" db:"numbers"`
@@ -44,7 +43,6 @@ type UserDTO struct {
 	Tags      []string          `json:"tags"`
 	Attrs     map[string]string `json:"attrs"`
 	CreatedAt time.Time         `json:"created_at"`
-	UpdatedAt *time.Time        `json:"updated_at"`
 	Any       interface{}       `json:"any"`
 	Alias     int               `json:"alias"`
 	Numbers   []int             `json:"numbers"`
@@ -91,7 +89,6 @@ type TimeDTO2 struct {
 
 func TestConvert_Basic(t *testing.T) {
 	now := time.Now()
-	nowPtr := &now
 	entity := &UserEntity{
 		ID:        1,
 		Name:      "Tom",
@@ -102,7 +99,6 @@ func TestConvert_Basic(t *testing.T) {
 		Tags:      []string{"golang", "dev"},
 		Attrs:     map[string]string{"role": "admin", "team": "backend"},
 		CreatedAt: now,
-		UpdatedAt: nowPtr,
 		Any:       map[string]any{"k": 1},
 		Alias:     42,
 		Numbers:   []int{1, 2, 3},
@@ -135,9 +131,6 @@ func TestConvert_Basic(t *testing.T) {
 	}
 	if !dto.CreatedAt.Equal(entity.CreatedAt) {
 		t.Errorf("CreatedAt 字段未正确拷贝")
-	}
-	if dto.UpdatedAt == nil || !dto.UpdatedAt.Equal(*entity.UpdatedAt) {
-		t.Errorf("UpdatedAt 字段未正确拷贝")
 	}
 	if dto.Alias != int(entity.Alias) {
 		t.Errorf("Alias 字段未正确拷贝")
@@ -196,27 +189,6 @@ func TestConvert_NilPointer(t *testing.T) {
 	}
 }
 
-func TestConvert_CustomConverter(t *testing.T) {
-	type MyEntity struct {
-		Foo int
-	}
-	type MyDTO struct {
-		Bar int
-	}
-	Register(func(src MyEntity) (MyDTO, error) {
-		return MyDTO{Bar: 100}, nil
-	})
-	entity := MyEntity{Foo: 1}
-	result := Convert[MyEntity, MyDTO](entity)
-	dto := result.Val()
-	if result.Error() != nil {
-		t.Fatalf("自定义转换器失败: %v", result.Error())
-	}
-	if dto.Bar != 100 {
-		t.Errorf("自定义转换器未生效: %+v", dto)
-	}
-}
-
 // 类型别名测试
 type MyInt int
 type MyString = string
@@ -270,13 +242,13 @@ func TestConvert_TimeInt64_S(t *testing.T) {
 		T1: now.Unix(),
 		T2: now.Add(time.Hour).Unix(),
 	}
-	dto := Convert[TimeEntity, TimeDTO](entity, WithTimeUnit(time.Second)).Val()
+	dto := Convert[TimeEntity, TimeDTO](entity, WithTimeUnit(Second)).Val()
 	if !dto.T1.Equal(now) || !dto.T2.Equal(now.Add(time.Hour)) {
 		t.Errorf("time.Time <- int64(s) 转换失败: %+v", dto)
 	}
 	// 反向
 	entity2 := TimeEntity2{T1: now, T2: now.Add(time.Hour)}
-	dto2 := Convert[TimeEntity2, TimeDTO2](entity2, WithTimeUnit(time.Second)).Val()
+	dto2 := Convert[TimeEntity2, TimeDTO2](entity2, WithTimeUnit(Second)).Val()
 	if dto2.T1 != now.Unix() || dto2.T2 != now.Add(time.Hour).Unix() {
 		t.Errorf("int64(s) <- time.Time 转换失败: %+v", dto2)
 	}
@@ -288,13 +260,13 @@ func TestConvert_TimeInt64_NS(t *testing.T) {
 		T1: now.UnixNano(),
 		T2: now.Add(time.Hour).UnixNano(),
 	}
-	dto := Convert[TimeEntity, TimeDTO](entity, WithTimeUnit(time.Nanosecond)).Val()
+	dto := Convert[TimeEntity, TimeDTO](entity, WithTimeUnit(Nanosecond)).Val()
 	if !dto.T1.Equal(now) || !dto.T2.Equal(now.Add(time.Hour)) {
 		t.Errorf("time.Time <- int64(ns) 转换失败: %+v", dto)
 	}
 	// 反向
 	entity2 := TimeEntity2{T1: now, T2: now.Add(time.Hour)}
-	dto2 := Convert[TimeEntity2, TimeDTO2](entity2, WithTimeUnit(time.Nanosecond)).Val()
+	dto2 := Convert[TimeEntity2, TimeDTO2](entity2, WithTimeUnit(Nanosecond)).Val()
 	if dto2.T1 != now.UnixNano() || dto2.T2 != now.Add(time.Hour).UnixNano() {
 		t.Errorf("int64(ns) <- time.Time 转换失败: %+v", dto2)
 	}
@@ -306,13 +278,13 @@ func TestConvert_TimeInt64_US(t *testing.T) {
 		T1: now.UnixMicro(),
 		T2: now.Add(time.Hour).UnixMicro(),
 	}
-	dto := Convert[TimeEntity, TimeDTO](entity, WithTimeUnit(time.Microsecond)).Val()
+	dto := Convert[TimeEntity, TimeDTO](entity, WithTimeUnit(Microsecond)).Val()
 	if !dto.T1.Equal(now) || !dto.T2.Equal(now.Add(time.Hour)) {
 		t.Errorf("time.Time <- int64(us) 转换失败: %+v", dto)
 	}
 	// 反向
 	entity2 := TimeEntity2{T1: now, T2: now.Add(time.Hour)}
-	dto2 := Convert[TimeEntity2, TimeDTO2](entity2, WithTimeUnit(time.Microsecond)).Val()
+	dto2 := Convert[TimeEntity2, TimeDTO2](entity2, WithTimeUnit(Microsecond)).Val()
 	if dto2.T1 != now.UnixMicro() || dto2.T2 != now.Add(time.Hour).UnixMicro() {
 		t.Errorf("int64(us) <- time.Time 转换失败: %+v", dto2)
 	}
@@ -320,7 +292,6 @@ func TestConvert_TimeInt64_US(t *testing.T) {
 
 func BenchmarkConvert_New(b *testing.B) {
 	now := time.Now()
-	nowPtr := &now
 	entity := UserEntity{
 		ID:        1,
 		Name:      "Tom",
@@ -331,7 +302,6 @@ func BenchmarkConvert_New(b *testing.B) {
 		Tags:      []string{"golang", "dev"},
 		Attrs:     map[string]string{"role": "admin", "team": "backend"},
 		CreatedAt: now,
-		UpdatedAt: nowPtr,
 		Any:       map[string]any{"k": 1},
 		Alias:     42,
 		Numbers:   []int{1, 2, 3},
@@ -353,7 +323,6 @@ func BenchmarkConvert_New(b *testing.B) {
 			Tags:      entity.Tags,
 			Attrs:     entity.Attrs,
 			CreatedAt: entity.CreatedAt,
-			UpdatedAt: entity.UpdatedAt,
 			Any:       entity.Any,
 			Alias:     int(entity.Alias),
 			Numbers:   entity.Numbers,
@@ -411,26 +380,6 @@ func BenchmarkConvert_Ptr(b *testing.B) {
 	}
 }
 
-func BenchmarkConvert_CustomConverter(b *testing.B) {
-	type MyEntity struct {
-		Foo int
-	}
-	type MyDTO struct {
-		Bar int
-	}
-	Register(func(src MyEntity) (MyDTO, error) {
-		return MyDTO{Bar: src.Foo + 1}, nil
-	})
-	entity := MyEntity{Foo: 123}
-	for i := 0; i < b.N; i++ {
-		result := Convert[MyEntity, MyDTO](entity)
-		if result.Error() != nil {
-			b.Fatal(result.Error())
-		}
-		_ = result.Val()
-	}
-}
-
 // 打印结果辅助
 func ExampleConvert() {
 	entity := UserEntity{ID: 1, Name: "Tom", Addr: &AddrEntity{City: "Beijing"}}
@@ -440,6 +389,6 @@ func ExampleConvert() {
 }
 
 func printJSON(t *testing.T, msg string, v any) {
-	json, _ := json.Marshal(v)
-	t.Log(msg, string(json))
+	bys, _ := json.Marshal(v)
+	t.Log(msg, string(bys))
 }

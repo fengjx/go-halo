@@ -159,6 +159,7 @@ func TestBasicEmbeddedWithSameName(t *testing.T) {
 	type FooExt struct {
 		Foo
 		B int `db:"b"`
+		c int32
 	}
 
 	m := NewMapper("db")
@@ -167,6 +168,7 @@ func TestBasicEmbeddedWithSameName(t *testing.T) {
 	z.A = 1
 	z.B = 2
 	z.Foo.Foo = 3
+	z.c = 4
 
 	zv := reflect.ValueOf(z)
 	fields := m.TypeMap(reflect.TypeOf(z))
