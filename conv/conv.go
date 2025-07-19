@@ -10,9 +10,8 @@ import (
 )
 
 var (
-	mu sync.Mutex
 	// registry converter
-	registry = make(map[tKey]any)
+	registry sync.Map // map[tKey]converter
 
 	// mapperCache 用于缓存不同 tagName 的 reflectx.Mapper
 	mapperCache sync.Map // map[string]*reflectx.Mapper
@@ -99,6 +98,22 @@ func Convert(src, dst any, opts ...Option) error {
 
 type converter func(src, dst any, opt options) error
 
+// 优化的缓存键结构，使用指针地址避免 reflect.Type 比较开销
+type tKey struct {
+	srcPtr uintptr
+	dstPtr uintptr
+	tag    string
+}
+
+// typeKey 生成类型唯一 key，用于注册表索引
+func typeKey(srcType, dstType reflect.Type, tagName string) tKey {
+	return tKey{
+		srcPtr: reflect.ValueOf(srcType).Pointer(),
+		dstPtr: reflect.ValueOf(dstType).Pointer(),
+		tag:    tagName,
+	}
+}
+
 func getConverter(srcType, dstType reflect.Type, opt options) converter {
 	// 获取实际的类型（去除指针）
 	srcType, _ = indirectType(srcType)
@@ -112,21 +127,16 @@ func getConverter(srcType, dstType reflect.Type, opt options) converter {
 	}
 
 	key := typeKey(srcType, dstType, opt.tagName)
-	fn, ok := registry[key]
-	if ok {
+
+	// 使用 sync.Map 的 Load 方法，无需加锁
+	if fn, ok := registry.Load(key); ok {
 		return fn.(converter)
 	}
 
-	mu.Lock()
-	defer mu.Unlock()
-	// double check
-	fn, ok = registry[key]
-	if ok {
-		return fn.(converter)
-	}
-	fn = genConverter(srcType, dstType, opt)
-	registry[key] = fn
-	return fn.(converter)
+	// 生成新的转换器
+	fn := genConverter(srcType, dstType, opt)
+	registry.Store(key, fn)
+	return fn
 }
 
 // genConverter 支持递归结构体赋值
@@ -135,7 +145,8 @@ func genConverter(srcType, dstType reflect.Type, opt options) converter {
 	dstFields := mapper.TypeMap(dstType)
 	srcFields := mapper.TypeMap(srcType)
 
-	setValueFuncMap := make(map[string]setValueFunc)
+	// 预分配 map 容量，减少扩容开销
+	fieldMapInfoList := make([]fieldMapInfo, 0, len(dstFields.Names))
 
 	for name, dstField := range dstFields.Names {
 		srcField, ok := srcFields.Names[name]
@@ -148,32 +159,52 @@ func genConverter(srcType, dstType reflect.Type, opt options) converter {
 
 		// 直接赋值（类型可赋值）
 		if srcFieldType.AssignableTo(dstFieldType) {
-			setValueFuncMap[name] = setAssignableTo
+			fieldMapInfoList = append(fieldMapInfoList, fieldMapInfo{
+				srcIndex:     srcField.Index,
+				dstIndex:     dstField.Index,
+				setValueFunc: setAssignableTo,
+			})
 			continue
 		}
 
 		if srcFieldType.ConvertibleTo(dstFieldType) {
-			setValueFuncMap[name] = setConvertibleTo
+			fieldMapInfoList = append(fieldMapInfoList, fieldMapInfo{
+				srcIndex:     srcField.Index,
+				dstIndex:     dstField.Index,
+				setValueFunc: setConvertibleTo,
+			})
 			continue
 		}
 
 		// 时间戳转换
 		if srcFieldType == int64Type && dstFieldType == timeType {
-			setValueFuncMap[name] = setInt64ToTime
+			fieldMapInfoList = append(fieldMapInfoList, fieldMapInfo{
+				srcIndex:     srcField.Index,
+				dstIndex:     dstField.Index,
+				setValueFunc: setInt64ToTime,
+			})
 			continue
 		}
 
 		if srcFieldType == timeType && dstFieldType == int64Type {
-			setValueFuncMap[name] = setTimeToInt64
+			fieldMapInfoList = append(fieldMapInfoList, fieldMapInfo{
+				srcIndex:     srcField.Index,
+				dstIndex:     dstField.Index,
+				setValueFunc: setTimeToInt64,
+			})
 			continue
 		}
 
 		// 递归处理结构体
 		if srcFieldType.Kind() == reflect.Struct && dstFieldType.Kind() == reflect.Struct {
 			subConv := genConverter(srcFieldType, dstFieldType, opt)
-			setValueFuncMap[name] = func(dst, src reflect.Value, opt options) {
-				_ = subConv(src.Addr().Interface(), dst.Addr().Interface(), opt)
-			}
+			fieldMapInfoList = append(fieldMapInfoList, fieldMapInfo{
+				srcIndex: srcField.Index,
+				dstIndex: dstField.Index,
+				setValueFunc: func(dst, src reflect.Value, opt options) {
+					_ = subConv(src.Addr().Interface(), dst.Addr().Interface(), opt)
+				},
+			})
 			continue
 		}
 	}
@@ -199,17 +230,17 @@ func genConverter(srcType, dstType reflect.Type, opt options) converter {
 		}
 
 		// 字段赋值
-		for name, fn := range setValueFuncMap {
-			srcFieldVal := reflectx.FieldByIndexesReadOnly(fromVal, srcFields.Names[name].Index)
+		for _, fieldMapInfo := range fieldMapInfoList {
+			srcFieldVal := reflectx.FieldByIndexesReadOnly(fromVal, fieldMapInfo.srcIndex)
 			if !srcFieldVal.IsValid() {
 				continue
 			}
 
-			dstFieldVal := reflectx.FieldByIndexes(toVal, dstFields.Names[name].Index)
+			dstFieldVal := reflectx.FieldByIndexes(toVal, fieldMapInfo.dstIndex)
 			if !dstFieldVal.CanSet() {
 				continue
 			}
-			fn(dstFieldVal, srcFieldVal, opt)
+			fieldMapInfo.setValueFunc(dstFieldVal, srcFieldVal, opt)
 		}
 		return nil
 	}
@@ -217,6 +248,12 @@ func genConverter(srcType, dstType reflect.Type, opt options) converter {
 
 func notSupportConvert(src, dst any, opt options) error {
 	return ErrNotSupportType
+}
+
+type fieldMapInfo struct {
+	srcIndex     []int        // 源字段索引
+	dstIndex     []int        // 目标字段索引
+	setValueFunc setValueFunc // 设置值函数
 }
 
 type setValueFunc func(dst, src reflect.Value, opt options)
@@ -268,21 +305,6 @@ func getCachedMapper(tagName string) *reflectx.Mapper {
 	mapper := reflectx.NewMapper(tagName)
 	mapperCache.Store(tagName, mapper)
 	return mapper
-}
-
-type tKey struct {
-	src reflect.Type
-	dst reflect.Type
-	tag string
-}
-
-// typeKey 生成类型唯一 key，用于注册表索引
-func typeKey(srcType, dstType reflect.Type, tagName string) tKey {
-	return tKey{
-		src: srcType,
-		dst: dstType,
-		tag: tagName,
-	}
 }
 
 // isNil 判断接口值是否为 nil
