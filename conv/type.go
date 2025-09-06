@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func ToString(v interface{}) string {
+func ToString(v any) string {
 	if v == nil {
 		return ""
 	}
@@ -27,7 +27,7 @@ func ToString(v interface{}) string {
 	}
 }
 
-func ToInt(v interface{}) int {
+func ToInt(v any) int {
 	if v == nil {
 		return 0
 	}
@@ -74,7 +74,7 @@ func ToInt(v interface{}) int {
 	return 0
 }
 
-func ToInt64(v interface{}) int64 {
+func ToInt64(v any) int64 {
 	if v == nil {
 		return 0
 	}

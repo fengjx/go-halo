@@ -11,11 +11,10 @@ import (
 
 // LRUCached 使用 LRU 实现缓存
 type lruCache[K comparable, V any] struct {
-	lru           *lru.Cache
-	mu            sync.RWMutex
-	ttl           time.Duration
-	cacheEmpty    bool
-	fallbackMulti FallbackMulti[K, V]
+	lru        *lru.Cache
+	mu         sync.RWMutex
+	ttl        time.Duration
+	cacheEmpty bool
 }
 
 type lruItem[K comparable, V any] struct {
@@ -24,65 +23,68 @@ type lruItem[K comparable, V any] struct {
 	expireAt int64
 }
 
-// IsExpire 判断是否过期
+// isExpire 判断是否过期
 // 返回 true 表示已过期
-func (i lruItem[K, V]) IsExpire() bool {
-	return i.expireAt <= time.Now().Unix()
+func (i lruItem[K, V]) isExpire() bool {
+	return i.expireAt <= time.Now().UnixNano()
 }
 
 // NewLRUCache 创建一个 LRU 缓存
-func NewLRUCache[K comparable, V any](capacity int, ttl time.Duration, fallback FallbackMulti[K, V], opts ...Option) Cache[K, V] {
+func NewLRUCache[K comparable, V any](capacity int, ttl time.Duration, opts ...Option) Cache[K, V] {
 	opt := &Options{}
 	for _, o := range opts {
 		o(opt)
 	}
 	cache := &lruCache[K, V]{
-		lru:           lru.New(capacity),
-		ttl:           ttl,
-		cacheEmpty:    opt.cacheEmpty,
-		fallbackMulti: fallback,
+		lru:        lru.New(capacity),
+		ttl:        ttl,
+		cacheEmpty: opt.cacheEmpty,
 	}
 	return cache
 }
 
 func (c *lruCache[K, V]) Get(ctx context.Context, key K) *Result[V] {
-	return c.GetWithFallback(ctx, key, func(ctx context.Context, missKey K) (v V, err error) {
-		var m map[K]V
-		m, err = c.fallbackMulti(ctx, []K{missKey})
-		if err != nil {
-			return
-		}
-		return m[missKey], nil
-	})
+	c.mu.RLock()
+	v, ok := c.getCache(key)
+	c.mu.RUnlock()
+	if ok {
+		return &Result[V]{val: v, err: nil}
+	}
+	return &Result[V]{}
 }
 
 func (c *lruCache[K, V]) GetWithFallback(ctx context.Context, key K, fn Fallback[K, V]) *Result[V] {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
 	v, ok := c.getCache(key)
+	c.mu.RUnlock()
+
 	if ok {
 		return &Result[V]{val: v, err: nil}
 	}
-	if c.fallbackMulti != nil {
-		vf, err := fn(ctx, key)
-		if err != nil {
-			return &Result[V]{err: err}
-		}
-		if !c.cacheEmpty && isEmpty(vf) {
-			return &Result[V]{err: nil}
-		}
-		v = vf
+
+	vf, err := fn(ctx, key)
+	if err != nil {
+		return &Result[V]{err: err}
 	}
-	c.setCache(key, v)
-	return &Result[V]{val: v, err: nil}
+	if !c.cacheEmpty && isEmpty(vf) {
+		return &Result[V]{val: vf, err: nil}
+	}
+
+	c.mu.Lock()
+	c.setCache(key, vf)
+	c.mu.Unlock()
+
+	return &Result[V]{val: vf, err: nil}
 }
 
 func (c *lruCache[K, V]) getCache(key K) (v V, ok bool) {
 	val, ok := c.lru.Get(key)
 	if ok {
 		item := val.(*lruItem[K, V])
-		if !item.IsExpire() {
-			c.lru.Remove(key)
+		if item.isExpire() {
+			// 过期了，需要删除，但这里不能直接删除，因为是在读锁下
+			// 返回false表示未找到，让调用方处理
+			ok = false
 			return
 		}
 		return item.val, true
@@ -91,12 +93,20 @@ func (c *lruCache[K, V]) getCache(key K) (v V, ok bool) {
 }
 
 func (c *lruCache[K, V]) GetMulti(ctx context.Context, keys []K) *Result[map[K]V] {
-	return c.GetMultiWithFallback(ctx, keys, c.fallbackMulti)
+	c.mu.RLock()
+	vals := make(map[K]V)
+	for _, k := range keys {
+		v, ok := c.getCache(k)
+		if ok {
+			vals[k] = v
+		}
+	}
+	c.mu.RUnlock()
+	return &Result[map[K]V]{val: vals, err: nil}
 }
 
 func (c *lruCache[K, V]) GetMultiWithFallback(ctx context.Context, keys []K, fn FallbackMulti[K, V]) *Result[map[K]V] {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
 	vals := make(map[K]V)
 	var missKeys []K
 	for _, k := range keys {
@@ -107,26 +117,31 @@ func (c *lruCache[K, V]) GetMultiWithFallback(ctx context.Context, keys []K, fn 
 			missKeys = append(missKeys, k)
 		}
 	}
+	c.mu.RUnlock()
+
 	if len(missKeys) == 0 {
 		return &Result[map[K]V]{val: vals, err: nil}
 	}
-	if c.fallbackMulti != nil {
-		m, _ := fn(ctx, missKeys)
-		for _, k := range missKeys {
-			v := m[k]
-			if !c.cacheEmpty && isEmpty(v) {
-				continue
-			}
-			c.setCache(k, v)
-			vals[k] = v
-		}
+
+	m, err := fn(ctx, missKeys)
+	if err != nil {
+		return &Result[map[K]V]{err: err}
 	}
+
+	c.mu.Lock()
+	for _, k := range missKeys {
+		v := m[k]
+		if !c.cacheEmpty && isEmpty(v) {
+			continue
+		}
+		c.setCache(k, v)
+		vals[k] = v
+	}
+	c.mu.Unlock()
 	return &Result[map[K]V]{val: vals, err: nil}
 }
 
 func (c *lruCache[K, V]) Set(ctx context.Context, key K, val V) *Result[bool] {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.setCache(key, val)
 	return &Result[bool]{true, nil}
 }
@@ -135,16 +150,18 @@ func (c *lruCache[K, V]) setCache(key K, val V) {
 	item := &lruItem[K, V]{
 		key:      key,
 		val:      val,
-		expireAt: time.Now().Add(c.ttl).Unix(),
+		expireAt: time.Now().Add(c.ttl).UnixNano(),
 	}
 	c.lru.Add(key, item)
 }
 
 func (c *lruCache[K, V]) SetMulti(ctx context.Context, values map[K]V) *Result[bool] {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	for k, v := range values {
-		c.Set(ctx, k, v)
+		c.setCache(k, v)
 	}
-	return &Result[bool]{true, nil}
+	return &Result[bool]{val: true, err: nil}
 }
 
 func (c *lruCache[K, V]) Del(ctx context.Context, keys ...K) *Result[int] {
@@ -157,28 +174,25 @@ func (c *lruCache[K, V]) Del(ctx context.Context, keys ...K) *Result[int] {
 			cnt++
 		}
 	}
-	return &Result[int]{cnt, nil}
+	return &Result[int]{val: cnt, err: nil}
 }
 
 func (c *lruCache[K, V]) Has(ctx context.Context, key K) *Result[bool] {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
 	_, ok := c.getCache(key)
-	if !ok {
-		return &Result[bool]{false, nil}
-	}
-	return &Result[bool]{ok, nil}
+	c.mu.RUnlock()
+	return &Result[bool]{val: ok, err: nil}
 }
 
 func (c *lruCache[K, V]) Clear(ctx context.Context) *Result[bool] {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.lru.Clear()
-	return &Result[bool]{true, nil}
+	return &Result[bool]{val: true, err: nil}
 }
 
-// isNotEmpty 判断一个值是否是nil
+// isEmpty 判断一个值是否是空值
 func isEmpty(v any) bool {
 	vl := reflect.ValueOf(v)
-	return vl.Kind() != reflect.Pointer || vl.IsNil()
+	return vl.Kind() == reflect.Pointer && vl.IsNil()
 }
