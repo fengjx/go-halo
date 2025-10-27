@@ -16,6 +16,9 @@ var (
 	// mapperCache 用于缓存不同 tagName 的 reflectx.Mapper
 	mapperCache sync.Map // map[string]*reflectx.Mapper
 
+	// customConverterRegistry 自定义类型转换器注册表
+	customConverterRegistry sync.Map // map[typePair]SetValueFunc
+
 	// 预定义的类型常量
 	intType        = reflect.TypeOf((*int)(nil)).Elem()
 	int8Type       = reflect.TypeOf((*int8)(nil)).Elem()
@@ -105,6 +108,12 @@ type tKey struct {
 	tag    string
 }
 
+// typePair 用于自定义转换器的键结构
+type typePair struct {
+	srcPtr uintptr
+	dstPtr uintptr
+}
+
 // typeKey 生成类型唯一 key，用于注册表索引
 func typeKey(srcType, dstType reflect.Type, tagName string) tKey {
 	return tKey{
@@ -112,6 +121,44 @@ func typeKey(srcType, dstType reflect.Type, tagName string) tKey {
 		dstPtr: reflect.ValueOf(dstType).Pointer(),
 		tag:    tagName,
 	}
+}
+
+// makeTypePair 创建类型对键
+func makeTypePair(srcType, dstType reflect.Type) typePair {
+	return typePair{
+		srcPtr: reflect.ValueOf(srcType).Pointer(),
+		dstPtr: reflect.ValueOf(dstType).Pointer(),
+	}
+}
+
+// RegisterConverter 注册自定义类型转换器
+// srcType: 源类型
+// dstType: 目标类型
+// converter: 转换函数，负责将源值转换为目标值
+//
+// 示例:
+//   type MyString string
+//   type MyInt int
+//   RegisterConverter(reflect.TypeOf(MyString("")), reflect.TypeOf(0), func(dst, src reflect.Value, opt options) {
+//       str := src.Interface().(MyString)
+//       dst.Set(reflect.ValueOf(len(str)))
+//   })
+func RegisterConverter(srcType, dstType reflect.Type, converter SetValueFunc) {
+	// 支持指针类型
+	srcType, _ = indirectType(srcType)
+	dstType, _ = indirectType(dstType)
+
+	pair := makeTypePair(srcType, dstType)
+	customConverterRegistry.Store(pair, converter)
+}
+
+// getCustomConverter 获取自定义转换器
+func getCustomConverter(srcType, dstType reflect.Type) (SetValueFunc, bool) {
+	pair := makeTypePair(srcType, dstType)
+	if fn, ok := customConverterRegistry.Load(pair); ok {
+		return fn.(SetValueFunc), true
+	}
+	return nil, false
 }
 
 func getConverter(srcType, dstType reflect.Type, opt options) converter {
@@ -156,6 +203,16 @@ func genConverter(srcType, dstType reflect.Type, opt options) converter {
 
 		srcFieldType := srcField.Field.Type
 		dstFieldType := dstField.Field.Type
+
+		// 检查是否有自定义转换器（优先于 ConvertibleTo 检查）
+		if customConverter, exist := getCustomConverter(srcFieldType, dstFieldType); exist {
+			fieldMapInfoList = append(fieldMapInfoList, fieldMapInfo{
+				srcIndex:     srcField.Index,
+				dstIndex:     dstField.Index,
+				setValueFunc: customConverter,
+			})
+			continue
+		}
 
 		// 直接赋值（类型可赋值）
 		if srcFieldType.AssignableTo(dstFieldType) {
@@ -253,10 +310,11 @@ func notSupportConvert(src, dst any, opt options) error {
 type fieldMapInfo struct {
 	srcIndex     []int        // 源字段索引
 	dstIndex     []int        // 目标字段索引
-	setValueFunc setValueFunc // 设置值函数
+	setValueFunc SetValueFunc // 设置值函数
 }
 
-type setValueFunc func(dst, src reflect.Value, opt options)
+// SetValueFunc 自定义转换器函数类型
+type SetValueFunc func(dst, src reflect.Value, opt options)
 
 var setAssignableTo = func(dst, src reflect.Value, opt options) {
 	dst.Set(src)
