@@ -19,26 +19,6 @@ var (
 	// customConverterRegistry 自定义类型转换器注册表
 	customConverterRegistry sync.Map // map[typePair]SetValueFunc
 
-	// 预定义的类型常量
-	intType        = reflect.TypeOf((*int)(nil)).Elem()
-	int8Type       = reflect.TypeOf((*int8)(nil)).Elem()
-	int16Type      = reflect.TypeOf((*int16)(nil)).Elem()
-	int32Type      = reflect.TypeOf((*int32)(nil)).Elem()
-	int64Type      = reflect.TypeOf((*int64)(nil)).Elem()
-	uintType       = reflect.TypeOf((*uint)(nil)).Elem()
-	uint8Type      = reflect.TypeOf((*uint8)(nil)).Elem()
-	uint16Type     = reflect.TypeOf((*uint16)(nil)).Elem()
-	uint32Type     = reflect.TypeOf((*uint32)(nil)).Elem()
-	uint64Type     = reflect.TypeOf((*uint64)(nil)).Elem()
-	float32Type    = reflect.TypeOf((*float32)(nil)).Elem()
-	float64Type    = reflect.TypeOf((*float64)(nil)).Elem()
-	complex64Type  = reflect.TypeOf((*complex64)(nil)).Elem()
-	complex128Type = reflect.TypeOf((*complex128)(nil)).Elem()
-	stringType     = reflect.TypeOf((*string)(nil)).Elem()
-	boolType       = reflect.TypeOf((*bool)(nil)).Elem()
-	byteType       = reflect.TypeOf((*byte)(nil)).Elem()
-	bytesType      = reflect.SliceOf(byteType)
-	timeType       = reflect.TypeOf((*time.Time)(nil)).Elem()
 )
 
 var (
@@ -234,7 +214,7 @@ func genConverter(srcType, dstType reflect.Type, opt options) converter {
 		}
 
 		// 时间戳转换
-		if srcFieldType == int64Type && dstFieldType == timeType {
+		if srcFieldType == reflectx.Int64Type && dstFieldType == reflectx.TimeType {
 			fieldMapInfoList = append(fieldMapInfoList, fieldMapInfo{
 				srcIndex:     srcField.Index,
 				dstIndex:     dstField.Index,
@@ -243,7 +223,7 @@ func genConverter(srcType, dstType reflect.Type, opt options) converter {
 			continue
 		}
 
-		if srcFieldType == timeType && dstFieldType == int64Type {
+		if srcFieldType == reflectx.TimeType && dstFieldType == reflectx.Int64Type {
 			fieldMapInfoList = append(fieldMapInfoList, fieldMapInfo{
 				srcIndex:     srcField.Index,
 				dstIndex:     dstField.Index,
@@ -374,6 +354,7 @@ func isNil(i any) bool {
 	switch v.Kind() {
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
 		return v.IsNil()
+	default:
 	}
 	return false
 }
