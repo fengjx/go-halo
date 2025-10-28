@@ -36,24 +36,24 @@ const (
 type TimeUnit string
 
 // Option 用于自定义转换行为的函数类型
-type Option func(*options)
+type Option func(*Options)
 
-type options struct {
-	tagName  string   // 结构体字段映射时使用的 tag 名称
-	timeUnit TimeUnit // 时间戳单位，ms/us/ns/s，默认s
+type Options struct {
+	TagName  string   // 结构体字段映射时使用的 tag 名称
+	TimeUnit TimeUnit // 时间戳单位，ms/us/ns/s，默认s
 }
 
 // WithTag 设置结构体 tag 名称（如 "json"、"db" 等）
 func WithTag(tag string) Option {
-	return func(o *options) {
-		o.tagName = tag
+	return func(o *Options) {
+		o.TagName = tag
 	}
 }
 
 // WithTimeUnit 设置时间戳单位
 func WithTimeUnit(unit TimeUnit) Option {
-	return func(o *options) {
-		o.timeUnit = unit
+	return func(o *Options) {
+		o.TimeUnit = unit
 	}
 }
 
@@ -64,9 +64,9 @@ func Convert(src, dst any, opts ...Option) error {
 		return nil
 	}
 
-	opt := options{
-		tagName:  "json",
-		timeUnit: "s",
+	opt := Options{
+		TagName:  "json",
+		TimeUnit: "s",
 	}
 	for _, o := range opts {
 		o(&opt)
@@ -79,7 +79,7 @@ func Convert(src, dst any, opts ...Option) error {
 	return fn(src, dst, opt)
 }
 
-type converter func(src, dst any, opt options) error
+type converter func(src, dst any, opt Options) error
 
 // 优化的缓存键结构，使用指针地址避免 reflect.Type 比较开销
 type tKey struct {
@@ -141,7 +141,7 @@ func getCustomConverter(srcType, dstType reflect.Type) (SetValueFunc, bool) {
 	return nil, false
 }
 
-func getConverter(srcType, dstType reflect.Type, opt options) converter {
+func getConverter(srcType, dstType reflect.Type, opt Options) converter {
 	// 获取实际的类型（去除指针）
 	srcType, _ = indirectType(srcType)
 	dstType, _ = indirectType(dstType)
@@ -153,7 +153,7 @@ func getConverter(srcType, dstType reflect.Type, opt options) converter {
 		return notSupportConvert
 	}
 
-	key := typeKey(srcType, dstType, opt.tagName)
+	key := typeKey(srcType, dstType, opt.TagName)
 
 	// 使用 sync.Map 的 Load 方法，无需加锁
 	if fn, ok := registry.Load(key); ok {
@@ -167,8 +167,8 @@ func getConverter(srcType, dstType reflect.Type, opt options) converter {
 }
 
 // genConverter 支持递归结构体赋值
-func genConverter(srcType, dstType reflect.Type, opt options) converter {
-	mapper := getCachedMapper(opt.tagName)
+func genConverter(srcType, dstType reflect.Type, opt Options) converter {
+	mapper := getCachedMapper(opt.TagName)
 	dstFields := mapper.TypeMap(dstType)
 	srcFields := mapper.TypeMap(srcType)
 
@@ -238,7 +238,7 @@ func genConverter(srcType, dstType reflect.Type, opt options) converter {
 			fieldMapInfoList = append(fieldMapInfoList, fieldMapInfo{
 				srcIndex: srcField.Index,
 				dstIndex: dstField.Index,
-				setValueFunc: func(dst, src reflect.Value, opt options) {
+				setValueFunc: func(dst, src reflect.Value, opt Options) {
 					_ = subConv(src.Addr().Interface(), dst.Addr().Interface(), opt)
 				},
 			})
@@ -246,7 +246,7 @@ func genConverter(srcType, dstType reflect.Type, opt options) converter {
 		}
 	}
 
-	return func(from any, to any, opt options) error {
+	return func(from any, to any, opt Options) error {
 		// 处理源值
 		fromVal := reflect.ValueOf(from)
 		if fromVal.Kind() == reflect.Ptr {
@@ -267,23 +267,23 @@ func genConverter(srcType, dstType reflect.Type, opt options) converter {
 		}
 
 		// 字段赋值
-		for _, fieldMapInfo := range fieldMapInfoList {
-			srcFieldVal := reflectx.FieldByIndexesReadOnly(fromVal, fieldMapInfo.srcIndex)
+		for _, fieldMap := range fieldMapInfoList {
+			srcFieldVal := reflectx.FieldByIndexesReadOnly(fromVal, fieldMap.srcIndex)
 			if !srcFieldVal.IsValid() {
 				continue
 			}
 
-			dstFieldVal := reflectx.FieldByIndexes(toVal, fieldMapInfo.dstIndex)
+			dstFieldVal := reflectx.FieldByIndexes(toVal, fieldMap.dstIndex)
 			if !dstFieldVal.CanSet() {
 				continue
 			}
-			fieldMapInfo.setValueFunc(dstFieldVal, srcFieldVal, opt)
+			fieldMap.setValueFunc(dstFieldVal, srcFieldVal, opt)
 		}
 		return nil
 	}
 }
 
-func notSupportConvert(src, dst any, opt options) error {
+func notSupportConvert(src, dst any, opt Options) error {
 	return ErrNotSupportType
 }
 
@@ -294,18 +294,18 @@ type fieldMapInfo struct {
 }
 
 // SetValueFunc 自定义转换器函数类型
-type SetValueFunc func(dst, src reflect.Value, opt options)
+type SetValueFunc func(dst, src reflect.Value, opt Options)
 
-var setAssignableTo = func(dst, src reflect.Value, opt options) {
+var setAssignableTo = func(dst, src reflect.Value, opt Options) {
 	dst.Set(src)
 }
 
-var setConvertibleTo = func(dst, src reflect.Value, opt options) {
+var setConvertibleTo = func(dst, src reflect.Value, opt Options) {
 	dst.Set(src.Convert(dst.Type()))
 }
 
-var setTimeToInt64 = func(dst, src reflect.Value, opt options) {
-	switch opt.timeUnit {
+var setTimeToInt64 = func(dst, src reflect.Value, opt Options) {
+	switch opt.TimeUnit {
 	case Nanosecond:
 		dst.Set(reflect.ValueOf(src.Interface().(time.Time).UnixNano()))
 	case Microsecond:
@@ -319,8 +319,8 @@ var setTimeToInt64 = func(dst, src reflect.Value, opt options) {
 	}
 }
 
-var setInt64ToTime = func(dst, src reflect.Value, opt options) {
-	switch opt.timeUnit {
+var setInt64ToTime = func(dst, src reflect.Value, opt Options) {
+	switch opt.TimeUnit {
 	case Nanosecond:
 		dst.Set(reflect.ValueOf(time.Unix(0, src.Interface().(int64))))
 	case Microsecond:
