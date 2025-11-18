@@ -10,15 +10,15 @@ func ToString(v any) string {
 	if v == nil {
 		return ""
 	}
-	switch v.(type) {
+	switch v := v.(type) {
 	case string:
-		return v.(string)
+		return v
 	case int, int8, int16, int32, int64:
 		return fmt.Sprintf("%d", v)
 	case float32, float64:
 		return fmt.Sprintf("%f", v)
 	case bool:
-		if b, ok := v.(bool); ok && b {
+		if v {
 			return "true"
 		}
 		return "false"

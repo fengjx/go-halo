@@ -334,6 +334,118 @@ func TestConvert_TimeInt64_US(t *testing.T) {
 	}
 }
 
+
+
+// 测试自定义类型转换
+func TestRegisterCustomConverter(t *testing.T) {
+	// 定义自定义类型
+	type Status int
+	type StatusStr string
+
+	// 注册转换器：Status -> string
+	RegisterConverter(
+		reflect.TypeOf(Status(0)),
+		reflect.TypeOf(""),
+		func(dst, src reflect.Value, opt options) {
+			s := src.Interface().(Status)
+			switch s {
+			case 0:
+				dst.Set(reflect.ValueOf("inactive"))
+			case 1:
+				dst.Set(reflect.ValueOf("active"))
+			default:
+				dst.Set(reflect.ValueOf("unknown"))
+			}
+		},
+	)
+
+	// 注册转换器：string -> Status
+	RegisterConverter(
+		reflect.TypeOf(""),
+		reflect.TypeOf(Status(0)),
+		func(dst, src reflect.Value, opt options) {
+			str := src.Interface().(string)
+			switch str {
+			case "active":
+				dst.Set(reflect.ValueOf(Status(1)))
+			case "inactive":
+				dst.Set(reflect.ValueOf(Status(0)))
+			default:
+				dst.Set(reflect.ValueOf(Status(-1)))
+			}
+		},
+	)
+
+	// 测试结构体转换
+	type Source struct {
+		Status Status `json:"status"`
+	}
+
+	type Target struct {
+		Status string `json:"status"`
+	}
+
+	src := &Source{Status: Status(1)}
+	dst := &Target{}
+
+	err := Convert(src, dst)
+	if err != nil {
+		t.Fatalf("Convert failed: %v", err)
+	}
+
+	if dst.Status != "active" {
+		t.Errorf("Expected 'active', got '%s'", dst.Status)
+	}
+
+	// 反向转换
+	src2 := &Source{}
+	err = Convert(dst, src2)
+	if err != nil {
+		t.Fatalf("Reverse Convert failed: %v", err)
+	}
+
+	if src2.Status != Status(1) {
+		t.Errorf("Expected Status(1), got %d", src2.Status)
+	}
+
+}
+
+// 测试时间戳到字符串的自定义转换
+func TestCustomTimeConverter(t *testing.T) {
+	// 注册转换器：time.Time -> string (自定义格式)
+	RegisterConverter(
+		reflect.TypeOf(time.Time{}),
+		reflect.TypeOf(""),
+		func(dst, src reflect.Value, opt options) {
+			t := src.Interface().(time.Time)
+			dst.Set(reflect.ValueOf(t.Format("2006-01-02 15:04:05")))
+		},
+	)
+
+	type Source struct {
+		CreatedAt time.Time `json:"created_at"`
+	}
+
+	type Target struct {
+		CreatedAt string `json:"created_at"`
+	}
+
+	now := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+	src := &Source{CreatedAt: now}
+	dst := &Target{}
+
+	err := Convert(src, dst)
+	if err != nil {
+		t.Fatalf("Convert failed: %v", err)
+	}
+
+	expected := "2024-01-15 10:30:00"
+	if dst.CreatedAt != expected {
+		t.Errorf("Expected '%s', got '%s'", expected, dst.CreatedAt)
+	}
+}
+
+
 func BenchmarkConvert_New(b *testing.B) {
 	now := time.Now()
 	entity := UserEntity{
@@ -453,3 +565,5 @@ func printJSON(t *testing.T, msg string, v any) {
 	bys, _ := json.Marshal(v)
 	t.Log(msg, string(bys))
 }
+
+
