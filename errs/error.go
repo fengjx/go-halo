@@ -44,9 +44,17 @@ func WithStack(err error) error {
 	if err == nil {
 		return nil
 	}
+	var s *Stack
+	var w withStack
+	if errors.As(err, &w) {
+		// 调用栈只需要获取一次，如果本身 err 就是 withStack 了，则不重复获取
+		s = w.Stack
+	} else {
+		s = callers()
+	}
 	return &withStack{
 		err,
-		callers(),
+		s,
 	}
 }
 
@@ -57,18 +65,7 @@ func Wrap(err error, msg string) error {
 	}
 	// %w 可以自动生成一个可以 Unwrap 的 error
 	err = fmt.Errorf("%s: %w", msg, err)
-	var s *Stack
-	var w withStack
-	if errors.As(err, &w) {
-		// 调用栈只需要获取一次，如果本身 err 就是 withStack 了，则不重复获取
-		s = w.Stack
-	} else {
-		s = callers()
-	}
-	return &withStack{
-		err,
-		s,
-	}
+	return WithStack(err)
 }
 
 // Wrapf 包装错误信息，并且保存堆栈信息，错误信息支持格式化
@@ -78,18 +75,7 @@ func Wrapf(err error, format string, args ...any) error {
 	}
 	// %w 可以自动生成一个可以 Unwrap 的 error
 	err = fmt.Errorf("%s: %w", fmt.Sprintf(format, args...), err)
-	var s *Stack
-	var w withStack
-	if errors.As(err, &w) {
-		// 调用栈只需要获取一次，如果本身 err 就是 withStack 了，则不重复获取
-		s = w.Stack
-	} else {
-		s = callers()
-	}
-	return &withStack{
-		err,
-		s,
-	}
+	return WithStack(err)
 }
 
 // Cause 返回根因 error
