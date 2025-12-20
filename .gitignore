@@ -23,3 +23,4 @@ go.work
 .idea
 .vscode
 logger/logs
+.cursor/plans
