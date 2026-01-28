@@ -227,6 +227,21 @@ func FieldByIndexesReadOnly(v reflect.Value, indexes []int) reflect.Value {
 	return v
 }
 
+func MustFieldByIndexesReadOnly(v reflect.Value, indexes []int) reflect.Value {
+	// 如果是 nil 指针，Indirect 会返回 zero Value，无法继续访问字段
+	if v.Kind() == reflect.Ptr && v.IsNil() {
+		return reflect.Value{}
+	}
+	for _, i := range indexes {
+		rv := reflect.Indirect(v)
+		if rv.IsValid() && rv.Kind() == reflect.Struct {
+			return reflect.Value{}
+		}
+		return rv.Field(i)
+	}
+	return v
+}
+
 // Deref is Indirect for reflect.Types
 func Deref(t reflect.Type) reflect.Type {
 	if t.Kind() == reflect.Ptr {

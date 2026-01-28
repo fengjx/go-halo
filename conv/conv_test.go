@@ -192,6 +192,19 @@ func TestConvert_NilPointer(t *testing.T) {
 	}
 }
 
+func TestConvert_FieldNilPointer(t *testing.T) {
+	entity := UserDTODB{
+		ID:   1,
+		Name: "Jerry",
+	}
+
+	var dto UserDTODB
+	err := Convert(entity, &dto, WithTag("db"))
+	if err != nil {
+		t.Fatalf("tagName转换失败: %v", err)
+	}
+}
+
 // 类型别名测试
 type MyInt int
 type MyString = string
@@ -334,8 +347,6 @@ func TestConvert_TimeInt64_US(t *testing.T) {
 	}
 }
 
-
-
 // 测试自定义类型转换
 func TestRegisterCustomConverter(t *testing.T) {
 	// 定义自定义类型
@@ -346,7 +357,7 @@ func TestRegisterCustomConverter(t *testing.T) {
 	RegisterConverter(
 		reflect.TypeOf(Status(0)),
 		reflect.TypeOf(""),
-		func(dst, src reflect.Value, opt options) {
+		func(dst, src reflect.Value, opt Options) {
 			s := src.Interface().(Status)
 			switch s {
 			case 0:
@@ -363,7 +374,7 @@ func TestRegisterCustomConverter(t *testing.T) {
 	RegisterConverter(
 		reflect.TypeOf(""),
 		reflect.TypeOf(Status(0)),
-		func(dst, src reflect.Value, opt options) {
+		func(dst, src reflect.Value, opt Options) {
 			str := src.Interface().(string)
 			switch str {
 			case "active":
@@ -416,7 +427,7 @@ func TestCustomTimeConverter(t *testing.T) {
 	RegisterConverter(
 		reflect.TypeOf(time.Time{}),
 		reflect.TypeOf(""),
-		func(dst, src reflect.Value, opt options) {
+		func(dst, src reflect.Value, opt Options) {
 			t := src.Interface().(time.Time)
 			dst.Set(reflect.ValueOf(t.Format("2006-01-02 15:04:05")))
 		},
@@ -444,7 +455,6 @@ func TestCustomTimeConverter(t *testing.T) {
 		t.Errorf("Expected '%s', got '%s'", expected, dst.CreatedAt)
 	}
 }
-
 
 func BenchmarkConvert_New(b *testing.B) {
 	now := time.Now()
@@ -565,5 +575,3 @@ func printJSON(t *testing.T, msg string, v any) {
 	bys, _ := json.Marshal(v)
 	t.Log(msg, string(bys))
 }
-
-

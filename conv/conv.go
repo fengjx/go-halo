@@ -268,7 +268,7 @@ func genConverter(srcType, dstType reflect.Type, opt Options) converter {
 
 		// 字段赋值
 		for _, fieldMap := range fieldMapInfoList {
-			srcFieldVal := reflectx.FieldByIndexesReadOnly(fromVal, fieldMap.srcIndex)
+			srcFieldVal := reflectx.MustFieldByIndexesReadOnly(fromVal, fieldMap.srcIndex)
 			if !srcFieldVal.IsValid() {
 				continue
 			}
