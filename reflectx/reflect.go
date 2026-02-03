@@ -227,17 +227,16 @@ func FieldByIndexesReadOnly(v reflect.Value, indexes []int) reflect.Value {
 	return v
 }
 
+// MustFieldByIndexesReadOnly is like FieldByIndexesReadOnly but safe for nil pointers.
+// If any intermediate pointer in the path (e.g. addr in addr.city) is nil,
+// it returns an invalid Value so that the caller can skip assigning that field.
 func MustFieldByIndexesReadOnly(v reflect.Value, indexes []int) reflect.Value {
-	// 如果是 nil 指针，Indirect 会返回 zero Value，无法继续访问字段
-	if v.Kind() == reflect.Ptr && v.IsNil() {
-		return reflect.Value{}
-	}
 	for _, i := range indexes {
-		rv := reflect.Indirect(v)
-		if rv.IsValid() && rv.Kind() == reflect.Struct {
+		v = reflect.Indirect(v)
+		if !v.IsValid() {
 			return reflect.Value{}
 		}
-		return rv.Field(i)
+		v = v.Field(i)
 	}
 	return v
 }

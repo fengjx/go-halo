@@ -231,19 +231,6 @@ func genConverter(srcType, dstType reflect.Type, opt Options) converter {
 			})
 			continue
 		}
-
-		// 递归处理结构体
-		if srcFieldType.Kind() == reflect.Struct && dstFieldType.Kind() == reflect.Struct {
-			subConv := genConverter(srcFieldType, dstFieldType, opt)
-			fieldMapInfoList = append(fieldMapInfoList, fieldMapInfo{
-				srcIndex: srcField.Index,
-				dstIndex: dstField.Index,
-				setValueFunc: func(dst, src reflect.Value, opt Options) {
-					_ = subConv(src.Addr().Interface(), dst.Addr().Interface(), opt)
-				},
-			})
-			continue
-		}
 	}
 
 	return func(from any, to any, opt Options) error {
