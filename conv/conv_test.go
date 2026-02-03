@@ -193,15 +193,14 @@ func TestConvert_NilPointer(t *testing.T) {
 }
 
 func TestConvert_FieldNilPointer(t *testing.T) {
-	entity := UserDTODB{
+	entity := UserEntity{
 		ID:   1,
 		Name: "Jerry",
 	}
-
-	var dto UserDTODB
-	err := Convert(entity, &dto, WithTag("db"))
+	var dto UserDTO
+	err := Convert(entity, &dto)
 	if err != nil {
-		t.Fatalf("tagName转换失败: %v", err)
+		t.Fatal(err)
 	}
 }
 
